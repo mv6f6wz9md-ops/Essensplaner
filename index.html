@@ -583,6 +583,19 @@ function berechneAmpel(planRecipes) {
     return { status: "leer", score: 0, hinweise: [], anzahl: 0 };
   }
 
+  const geplanteIds = new Set(gefuellt.map((r) => r.id));
+  const verfuegbar = RECIPES.filter((r) => !geplanteIds.has(r.id));
+
+  // Hilfsfunktion: bis zu `n` passende, noch nicht geplante Rezepte vorschlagen,
+  // bevorzugt leichte/schnelle Gerichte zuerst (niedrigere Hürde zum Nachkochen).
+  function schlageVor(filterFn, n = 3) {
+    return verfuegbar
+      .filter(filterFn)
+      .sort((a, b) => (a.zeit ?? 999) - (b.zeit ?? 999))
+      .slice(0, n)
+      .map((r) => r.name);
+  }
+
   const hinweise = [];
   let punkte = 0;
   const maxPunkte = 6;
@@ -592,7 +605,13 @@ function berechneAmpel(planRecipes) {
   if (fischAnzahl >= EMPFEHLUNG.fisch_min) {
     punkte += 1;
   } else if (anzahl >= 5) {
-    hinweise.push({ typ: "warnung", text: `Nur ${fischAnzahl}× Fisch diese Woche — empfohlen sind mindestens 2 Fischgerichte.` });
+    const fehlend = EMPFEHLUNG.fisch_min - fischAnzahl;
+    const vorschlaege = schlageVor((r) => r.category === "fisch");
+    hinweise.push({
+      typ: "warnung",
+      text: `Nur ${fischAnzahl}× Fisch diese Woche — noch ${fehlend} Fischgericht${fehlend > 1 ? "e" : ""} einplanen, um auf ${EMPFEHLUNG.fisch_min} zu kommen.`,
+      vorschlaege,
+    });
   }
 
   // 2. Rotes Fleisch nicht zu oft
@@ -600,7 +619,13 @@ function berechneAmpel(planRecipes) {
   if (rotAnzahl <= EMPFEHLUNG.fleisch_rot_max) {
     punkte += 1;
   } else {
-    hinweise.push({ typ: "warnung", text: `${rotAnzahl}× rotes Fleisch diese Woche — mehr als 2× wird ernährungsphysiologisch nicht empfohlen.` });
+    const zuViel = rotAnzahl - EMPFEHLUNG.fleisch_rot_max;
+    const ersatzVorschlaege = schlageVor((r) => r.category === "vegetarisch" || r.category === "vegan" || r.category === "fleisch_gefluegel");
+    hinweise.push({
+      typ: "warnung",
+      text: `${rotAnzahl}× rotes Fleisch diese Woche — ${zuViel} Gericht${zuViel > 1 ? "e" : ""} gegen Fisch, Geflügel oder vegetarisch tauschen.`,
+      vorschlaege: ersatzVorschlaege,
+    });
   }
 
   // 3. Vegetarisch/vegan-Anteil
@@ -608,7 +633,13 @@ function berechneAmpel(planRecipes) {
   if (vegAnzahl >= EMPFEHLUNG.vegetarisch_vegan_min) {
     punkte += 1;
   } else if (anzahl >= 5) {
-    hinweise.push({ typ: "warnung", text: `Nur ${vegAnzahl}× vegetarisch/vegan — für mehr Ballaststoffe und Abwechslung 2–3× pro Woche einplanen.` });
+    const fehlend = EMPFEHLUNG.vegetarisch_vegan_min - vegAnzahl;
+    const vorschlaege = schlageVor((r) => r.category === "vegetarisch" || r.category === "vegan");
+    hinweise.push({
+      typ: "warnung",
+      text: `Nur ${vegAnzahl}× vegetarisch/vegan — noch ${fehlend} Gericht${fehlend > 1 ? "e" : ""} einplanen für mehr Ballaststoffe und Abwechslung.`,
+      vorschlaege,
+    });
   }
 
   // 4. Kohlenhydrat-Vielfalt (keine Dominanz einer Quelle)
@@ -619,7 +650,12 @@ function berechneAmpel(planRecipes) {
     punkte += 1;
   } else {
     const dominant = Object.entries(carbCounts).sort((a, b) => b[1] - a[1])[0][0];
-    hinweise.push({ typ: "warnung", text: `Die Kohlenhydratquelle "${dominant}" dominiert die Woche — etwas mehr Abwechslung (Reis, Vollkorn, Hülsenfrüchte) tut gut.` });
+    const vorschlaege = schlageVor((r) => r.carb !== dominant);
+    hinweise.push({
+      typ: "warnung",
+      text: `Die Kohlenhydratquelle "${dominant}" dominiert die Woche — etwas mehr Abwechslung (Reis, Vollkorn, Hülsenfrüchte) tut gut.`,
+      vorschlaege,
+    });
   }
 
   // 5. Ballaststoffe pro Tag (Durchschnitt) — Richtwert Familie ca. 70-90g/Tag gesamt
@@ -628,7 +664,12 @@ function berechneAmpel(planRecipes) {
   if (ballaststoffeProTag >= 20) {
     punkte += 1;
   } else {
-    hinweise.push({ typ: "info", text: `Ballaststoffe im Schnitt ${ballaststoffeProTag.toFixed(0)} g/Tag — mehr Hülsenfrüchte, Vollkorn oder Gemüse erhöhen das.` });
+    const vorschlaege = schlageVor((r) => r.tags.includes("hülsenfrüchte") || r.naehrwerte.ballaststoffe / ERWACHSENENEINHEITEN_HAUSHALT >= 12);
+    hinweise.push({
+      typ: "info",
+      text: `Ballaststoffe im Schnitt ${ballaststoffeProTag.toFixed(0)} g/Tag — mehr Hülsenfrüchte, Vollkorn oder Gemüse erhöhen das.`,
+      vorschlaege,
+    });
   }
 
   // 6. Schwere Gerichte nicht zu häufig
@@ -636,7 +677,12 @@ function berechneAmpel(planRecipes) {
   if (schwerAnzahl <= 2) {
     punkte += 1;
   } else {
-    hinweise.push({ typ: "warnung", text: `${schwerAnzahl} besonders reichhaltige Gerichte (viel Sahne/Käse/Fett) — für die Balance lieber auf max. 2 pro Woche begrenzen.` });
+    const vorschlaege = schlageVor((r) => r.weight === "leicht");
+    hinweise.push({
+      typ: "warnung",
+      text: `${schwerAnzahl} besonders reichhaltige Gerichte (viel Sahne/Käse/Fett) — für die Balance lieber auf max. 2 pro Woche begrenzen.`,
+      vorschlaege,
+    });
   }
 
   let status = "rot";
@@ -829,7 +875,6 @@ function App() {
   const [ladeStatus, setLadeStatus] = useState("laedt"); // laedt | bereit | fehler
   const [syncStatus, setSyncStatus] = useState("synchron"); // synchron | speichert | fehler
   const hatGeladen = useRef(false);
-  const schreibtGerade = useRef(false); // verhindert, dass der eigene Schreibvorgang den lokalen State überschreibt
 
   // RECIPES-Lookup nach ID, für das Wiederherstellen aus Firestore
   const recipesById = useMemo(() => {
@@ -846,19 +891,24 @@ function App() {
 
   // Echtzeit-Listener: reagiert automatisch, wenn sich der Plan irgendwo ändert
   // (eigenes Gerät ODER das der Frau) — kein manuelles "Aktualisieren" nötig.
+  // hasPendingWrites unterscheidet das eigene optimistische Update (noch nicht
+  // serverbestätigt) von einer wirklich fremden Änderung, damit der eigene
+  // Schreibvorgang nicht als "neue Änderung" zurück in den State geschrieben wird
+  // (das war die Ursache des Flackerns zwischen "Speichert…" / "Aktuell").
   useEffect(() => {
     if (!MEALPLAN_DOC) {
       setLadeStatus("fehler");
       return;
     }
     const unsubscribe = MEALPLAN_DOC.onSnapshot(
+      { includeMetadataChanges: true },
       (doc) => {
-        if (schreibtGerade.current) {
-          // Eigener Schreibvorgang löst diesen Snapshot aus — nicht erneut übernehmen,
-          // um Ruckler im UI durch den eigenen Roundtrip zu vermeiden.
-          schreibtGerade.current = false;
-        } else if (doc.exists) {
-          setPlan(planAusIds(doc.data().plan));
+        if (!doc.metadata.hasPendingWrites && doc.exists) {
+          const neueIds = JSON.stringify(doc.data().plan || []);
+          const aktuelleIds = JSON.stringify(plan.map((r) => (r ? r.id : null)));
+          if (neueIds !== aktuelleIds) {
+            setPlan(planAusIds(doc.data().plan));
+          }
         }
         setLadeStatus("bereit");
         hatGeladen.current = true;
@@ -869,7 +919,7 @@ function App() {
       }
     );
     return () => unsubscribe();
-  }, [recipesById]);
+  }, [recipesById, plan]);
 
   // Bei jeder Änderung: Plan in Firestore sichern (nicht beim allerersten Laden)
   useEffect(() => {
@@ -877,7 +927,6 @@ function App() {
     let abgebrochen = false;
     async function speichern() {
       setSyncStatus("speichert");
-      schreibtGerade.current = true;
       try {
         const ids = plan.map((r) => (r ? r.id : null));
         await MEALPLAN_DOC.set({ plan: ids, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
@@ -927,6 +976,22 @@ function App() {
 
   function alleZuruecksetzen() {
     setPlan(Array(7).fill(null));
+  }
+
+  // Vorschlag aus der Ausgewogenheits-Bilanz per Klick direkt einplanen:
+  // in den ersten freien Tag, oder falls die Woche bereits voll ist, öffnet
+  // sich der Picker für Montag, damit man manuell einen Tag zum Tauschen wählt.
+  function vorschlagEinplanen(name) {
+    const recipe = RECIPES.find((r) => r.name === name);
+    if (!recipe) return;
+    const freierTag = plan.findIndex((r) => r === null);
+    if (freierTag === -1) {
+      setPickerDay(0);
+      return;
+    }
+    const neu = [...plan];
+    neu[freierTag] = recipe;
+    setPlan(neu);
   }
 
   return (
@@ -1014,11 +1079,30 @@ function App() {
                       <div key={i} style={{ flex: 1, height: 6, borderRadius: 3, background: i < ampel.score ? (ampel.status === "gruen" ? "#3F7D44" : ampel.status === "gelb" ? "#D9A62E" : "#C24B3F") : "#EFE9DC" }} />
                     ))}
                   </div>
-                  <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ display: "grid", gap: 12 }}>
                     {ampel.hinweise.map((h, i) => (
-                      <div key={i} style={{ display: "flex", gap: 8, fontSize: 13, color: "#3B362F", lineHeight: 1.4 }}>
-                        <span style={{ flexShrink: 0 }}>{h.typ === "warnung" ? "⚠️" : h.typ === "lob" ? "✅" : "💡"}</span>
-                        <span>{h.text}</span>
+                      <div key={i}>
+                        <div style={{ display: "flex", gap: 8, fontSize: 13, color: "#3B362F", lineHeight: 1.4 }}>
+                          <span style={{ flexShrink: 0 }}>{h.typ === "warnung" ? "⚠️" : h.typ === "lob" ? "✅" : "💡"}</span>
+                          <span>{h.text}</span>
+                        </div>
+                        {h.vorschlaege && h.vorschlaege.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8, marginLeft: 22 }}>
+                            {h.vorschlaege.map((name) => (
+                              <button
+                                key={name}
+                                onClick={() => vorschlagEinplanen(name)}
+                                title="Klicken, um dieses Gericht in einen freien Tag einzuplanen"
+                                style={{
+                                  display: "flex", alignItems: "center", gap: 5, background: "#FFFFFF", border: "1px solid #D9CFB8",
+                                  borderRadius: 999, padding: "5px 11px", fontSize: 12, color: "#3B362F", cursor: "pointer", fontWeight: 500,
+                                }}
+                              >
+                                <Plus size={11} color="#8A8270" /> {name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
