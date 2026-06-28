@@ -2,7 +2,7 @@
   "name": "Familien-Wochenplan",
   "short_name": "Wochenplan",
   "description": "Wochenplan, Rezepte, Einkaufsliste und Nährwert-Check für die Familie",
-  "start_url": "./mealplan.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#FAF6EF",
   "theme_color": "#2D5A3D",
