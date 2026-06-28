@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Nur das eine Dokument "mealplan/current" ist erreichbar.
+    // Lesen und Schreiben ist offen, aber NUR für dieses eine Dokument —
+    // niemand kann andere Collections anlegen oder lesen.
+    //
+    // Hinweis: Das ist KEIN Login-Schutz. Jeder mit dem Link zur App
+    // (bzw. den Firebase-Konfigurationswerten) kann den Plan lesen und
+    // ändern. Für ein privates Familien-Tool ohne sensible Daten ist das
+    // ein vertretbarer, einfacher Kompromiss — siehe README für die
+    // optionale Variante mit Firebase Authentication.
+    match /mealplan/current {
+      allow read, write: if true;
+    }
+
+    // Alles andere ist gesperrt.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

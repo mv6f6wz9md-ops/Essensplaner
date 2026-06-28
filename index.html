@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Familien-Wochenplan</title>
+
+<!-- ============ PWA: Homescreen-Fähigkeit (iOS + Android) ============ -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Wochenplan" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#2D5A3D" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="icon" href="icon-192.png" />
+
+<!-- ============ Google Fonts ============ -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<!-- ============ React + Babel (Standalone, kein Build-Step) ============ -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<!-- ============ Firebase (Compat-SDK, einfache API ohne Bundler) ============ -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #FAF6EF; }
+  body { -webkit-tap-highlight-color: transparent; }
+  #root { min-height: 100vh; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #D9CFB8; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="root">
+  <!-- Minimaler Lade-Zustand, bis React übernimmt -->
+  <div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:'Inter',sans-serif;color:#8A8270;">
+    Lädt …
+  </div>
+</div>
+
+<!-- ============ Firebase-Konfiguration ============ -->
+<!-- WICHTIG: Hier deine eigenen Werte aus der Firebase Console eintragen
+     (Projekteinstellungen → Allgemein → "Meine Apps" → Web-App → SDK-Konfiguration).
+     Diese Werte sind NICHT geheim — sie dürfen öffentlich im Code stehen, der
+     eigentliche Schutz läuft über die Firestore Security Rules (siehe README). -->
+<script>
+  const firebaseConfig = {
+    apiKey: "DEIN_API_KEY",
+    authDomain: "DEIN_PROJEKT.firebaseapp.com",
+    projectId: "DEIN_PROJEKT",
+    storageBucket: "DEIN_PROJEKT.appspot.com",
+    messagingSenderId: "DEINE_SENDER_ID",
+    appId: "DEINE_APP_ID",
+  };
+  firebase.initializeApp(firebaseConfig);
+  window.firebaseDb = firebase.firestore();
+</script>
+
+<!-- ============ Icons (Inline-SVG, da kein Bundler für lucide-react verfügbar) ============ -->
+<script type="text/babel" data-presets="react">
+// Minimal-Icon-Set als Inline-SVG (kein Bundler verfügbar → kein lucide-react Import möglich)
+// Nachgebaut im Stil von Lucide (stroke-based, 24x24 Viewbox, strokeWidth 2)
+function Icon({ children, size = 16, color = "currentColor", style }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" style={style}>
+      {children}
+    </svg>
+  );
+}
+const ChefHat = (p) => <Icon {...p}><path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z"/><line x1="6" y1="17" x2="18" y2="17"/></Icon>;
+const ShoppingCart = (p) => <Icon {...p}><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></Icon>;
+const X = (p) => <Icon {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></Icon>;
+const Plus = (p) => <Icon {...p}><path d="M5 12h14"/><path d="M12 5v14"/></Icon>;
+const Soup = (p) => <Icon {...p}><path d="M12 21a9 9 0 0 0 9-9H3a9 9 0 0 0 9 9Z"/><path d="M7 21h10"/><path d="M19.5 12 22 6"/><path d="M16.25 3c.27.1.8.53.75 1.36-.06.95-.93 1.14-1 2.14-.05.95.93 1.36.93 1.36"/><path d="M11.25 3c.27.1.8.53.75 1.36-.06.95-.93 1.14-1 2.14-.05.95.93 1.36.93 1.36"/><path d="M6.25 3c.27.1.8.53.75 1.36-.06.95-.93 1.14-1 2.14-.05.95.93 1.36.93 1.36"/></Icon>;
+const Printer = (p) => <Icon {...p}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></Icon>;
+const Trash2 = (p) => <Icon {...p}><path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></Icon>;
+const Clock = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></Icon>;
+const Zap = (p) => <Icon {...p}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></Icon>;
+const RefreshCw = (p) => <Icon {...p}><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></Icon>;
+const Users = (p) => <Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Icon>;
+const Check = (p) => <Icon {...p}><polyline points="20 6 9 17 4 12"/></Icon>;
+const Fish = (p) => <Icon {...p}><path d="M6.5 12c.94-3.46 4.94-6 8.5-6 3.56 0 6.06 2.54 7 6-.94 3.47-3.44 6-7 6-3.56 0-7.56-2.53-8.5-6Z"/><path d="M18 12v.5"/><path d="M16 17.93a9.77 9.77 0 0 1 0-11.86"/><path d="M7 10.67C7 8 5.58 5.97 2.73 5.5c-1 1.5-1 5 .23 6.5-1.24 1.5-1.24 5-.23 6.5C5.58 18.03 7 16 7 13.33"/><path d="M10.46 7.26C10.2 5.88 9.17 4.24 8 3"/></Icon>;
+const Drumstick = (p) => <Icon {...p}><path d="M15.45 15.4c-2.13.65-4.3.32-5.7-1.1-2.29-2.27-1.76-6.5 1.17-9.42 2.93-2.93 7.15-3.46 9.43-1.18 1.41 1.41 1.74 3.57 1.1 5.71-1.4 4.3-2.5 4.4-6 6z"/><path d="m11.25 15.6-2.1 2.1"/><path d="M3.55 18.85a2.5 2.5 0 1 0 3.53 3.53 2.5 2.5 0 0 0-3.53-3.53Z"/></Icon>;
+const Beef = (p) => <Icon {...p}><circle cx="12.5" cy="8.5" r="6.5"/><path d="M16.4 16.5c.7 1.9.8 4-2.4 6.5-1.8-2.5-3.8-2.7-5.5-2.2"/><path d="M9.5 4.5C5 5 2 8 2 12.5S5 20 9.5 20.5"/></Icon>;
+const Leaf = (p) => <Icon {...p}><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></Icon>;
+
+
+</script>
+
+<!-- ============ App-Code ============ -->
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useEffect, useRef } = React;
+
+
+/* ============================================================
+   REZEPTDATENBANK — 45 Gerichte
+   Mengen kalkuliert für: 2 Erwachsene + 2 kleine Kinder
+   Nährwerte = Gesamtwert für das ganze Gericht (Haushaltsportion)
+   ============================================================ */
+const RECIPES = [
+  { id: 1, name: "Lachsfilet mit Brokkoli und Kartoffeln", category: "fisch", carb: "kartoffel", weight: "mittel", zeit: 35, tags: ["fisch","glutenfrei"],
+    zutaten: [["Lachsfilet","500","g"],["Brokkoli","500","g"],["Kartoffeln","800","g"],["Butter","20","g"],["Zitrone","1","Stück"],["Olivenöl","2","EL"],["Salz","1","TL"],["Pfeffer","1","Prise"]],
+    zubereitung: ["Kartoffeln schälen, würfeln, in Salzwasser 15 Min. kochen.","Brokkoli in Röschen teilen, 5 Min. dämpfen oder mitkochen.","Lachs mit Salz, Pfeffer und Zitronensaft würzen.","In Olivenöl bei mittlerer Hitze 3–4 Min. pro Seite braten.","Kartoffeln mit Butter stampfen oder ganz lassen, mit Brokkoli und Lachs servieren."],
+    naehrwerte: { kcal: 1680, protein: 132, fett: 78, kh: 118, ballaststoffe: 18 } },
+  { id: 2, name: "Fischstäbchen mit Kartoffelpüree und Erbsen", category: "fisch", carb: "kartoffel", weight: "leicht", zeit: 15, tags: ["fisch","kinderfreundlich"],
+    zutaten: [["Fischstäbchen (Seelachs)","16","Stück"],["Kartoffeln","900","g"],["Milch","100","ml"],["Butter","30","g"],["TK-Erbsen","300","g"],["Muskat","1","Prise"]],
+    zubereitung: ["Kartoffeln schälen, kochen, mit Milch und Butter zu Püree stampfen, mit Muskat würzen.","Fischstäbchen nach Packungsangabe im Ofen backen.","Erbsen kurz in Salzwasser kochen.","Alles zusammen anrichten."],
+    naehrwerte: { kcal: 1850, protein: 78, fett: 62, kh: 235, ballaststoffe: 22 } },
+  { id: 3, name: "Pasta mit Thunfisch und Tomatensauce", category: "fisch", carb: "nudeln", weight: "mittel", zeit: 25, tags: ["fisch"],
+    zutaten: [["Vollkornnudeln","400","g"],["Thunfisch in Wasser, Dose","2","Dosen (à 150g)"],["Passierte Tomaten","400","g"],["Zwiebel","1","Stück"],["Knoblauch","2","Zehen"],["Olivenöl","2","EL"],["Parmesan","40","g"],["Basilikum","1","Bund"]],
+    zubereitung: ["Zwiebel und Knoblauch fein würfeln, in Olivenöl andünsten.","Passierte Tomaten zugeben, 10 Min. köcheln lassen.","Abgetropften Thunfisch unterrühren, kurz erwärmen.","Nudeln kochen, abgießen, mit der Sauce vermengen.","Mit Parmesan und Basilikum servieren."],
+    naehrwerte: { kcal: 2050, protein: 118, fett: 48, kh: 290, ballaststoffe: 24 } },
+  { id: 4, name: "Gebratener Kabeljau mit Reis und Gemüsepfanne", category: "fisch", carb: "reis", weight: "leicht", zeit: 15, tags: ["fisch","glutenfrei"],
+    zutaten: [["Kabeljaufilet","500","g"],["Basmatireis","300","g"],["Paprika","2","Stück"],["Zucchini","1","Stück"],["Karotten","2","Stück"],["Olivenöl","3","EL"],["Sojasauce","2","EL"]],
+    zubereitung: ["Reis nach Packungsangabe kochen.","Gemüse in Streifen schneiden, in Olivenöl scharf anbraten, mit Sojasauce abschmecken.","Kabeljau salzen, in Pfanne 3 Min. pro Seite braten.","Alles zusammen servieren."],
+    naehrwerte: { kcal: 1640, protein: 110, fett: 38, kh: 215, ballaststoffe: 16 } },
+  { id: 5, name: "Lachs-Spinat-Quiche mit Salat", category: "fisch", carb: "vollkorn", weight: "mittel", zeit: 45, tags: ["fisch"],
+    zutaten: [["Blätterteig (Vollkorn)","1","Rolle"],["Lachsfilet","250","g"],["Blattspinat (TK)","300","g"],["Eier","4","Stück"],["Sahne","200","ml"],["Gemischter Salat","200","g"],["Essig & Öl","3","EL"]],
+    zubereitung: ["Blätterteig in Form auslegen, Boden mehrfach einstechen.","Spinat auftauen und ausdrücken, Lachs würfeln, beides auf dem Teig verteilen.","Eier mit Sahne verquirlen, würzen, darüber gießen.","Bei 180°C ca. 30 Min. backen.","Mit Salat servieren."],
+    naehrwerte: { kcal: 1920, protein: 88, fett: 132, kh: 92, ballaststoffe: 10 } },
+  { id: 6, name: "Forelle mit Petersilienkartoffeln", category: "fisch", carb: "kartoffel", weight: "leicht", zeit: 15, tags: ["fisch","glutenfrei"],
+    zutaten: [["Forellenfilet","500","g"],["Kartoffeln","800","g"],["Petersilie","1","Bund"],["Butter","30","g"],["Zitrone","1","Stück"],["Gurke","1","Stück"],["Joghurt","100","g"]],
+    zubereitung: ["Kartoffeln kochen, mit Butter und Petersilie schwenken.","Forelle mit Zitrone und Salz würzen, in Butter braten.","Gurke in Scheiben schneiden, mit Joghurt und Dill anmachen.","Zusammen servieren."],
+    naehrwerte: { kcal: 1520, protein: 102, fett: 62, kh: 132, ballaststoffe: 14 } },
+  { id: 7, name: "Garnelen-Gemüse-Pfanne mit Glasnudeln", category: "fisch", carb: "sonstige", weight: "leicht", zeit: 15, tags: ["fisch","glutenfrei"],
+    zutaten: [["Garnelen, geschält","400","g"],["Glasnudeln","250","g"],["Karotten","2","Stück"],["Paprika","1","Stück"],["Lauchzwiebeln","3","Stück"],["Sojasauce","3","EL"],["Sesamöl","2","EL"]],
+    zubereitung: ["Glasnudeln nach Packungsangabe in heißem Wasser einlegen.","Gemüse klein schneiden, in Sesamöl anbraten.","Garnelen zugeben, 3–4 Min. braten.","Nudeln und Sojasauce unterheben, kurz durchschwenken."],
+    naehrwerte: { kcal: 1480, protein: 96, fett: 38, kh: 198, ballaststoffe: 12 } },
+  { id: 8, name: "Fischsuppe mit Lachs, Kartoffeln und Gemüse", category: "fisch", carb: "kartoffel", weight: "leicht", zeit: 30, tags: ["fisch","glutenfrei"],
+    zutaten: [["Lachsfilet","400","g"],["Kartoffeln","400","g"],["Karotten","2","Stück"],["Lauch","1","Stange"],["Gemüsebrühe","1","l"],["Sahne","100","ml"],["Dill","1","Bund"]],
+    zubereitung: ["Kartoffeln und Karotten würfeln, in Brühe 15 Min. köcheln.","Lauch in Ringe schneiden, zugeben.","Lachs würfeln, 5 Min. mitkochen.","Sahne einrühren, mit Dill bestreuen, servieren."],
+    naehrwerte: { kcal: 1280, protein: 86, fett: 58, kh: 92, ballaststoffe: 12 } },
+  { id: 9, name: "Fisch-Tacos mit Krautsalat", category: "fisch", carb: "sonstige", weight: "mittel", zeit: 15, tags: ["fisch"],
+    zutaten: [["Weißfischfilet (z. B. Pangasius)","450","g"],["Weizentortillas","8","Stück"],["Weißkohl","300","g"],["Joghurt","150","g"],["Limette","1","Stück"],["Paprikapulver","1","TL"]],
+    zubereitung: ["Fisch mit Paprikapulver würzen, in der Pfanne braten, zerteilen.","Weißkohl fein hobeln, mit Joghurt und Limettensaft mischen.","Tortillas erwärmen, mit Fisch und Krautsalat füllen."],
+    naehrwerte: { kcal: 1780, protein: 102, fett: 42, kh: 230, ballaststoffe: 16 } },
+  { id: 10, name: "Hähnchencurry mit Reis", category: "fleisch_gefluegel", carb: "reis", weight: "mittel", zeit: 30, tags: ["fleisch"],
+    zutaten: [["Hähnchenbrustfilet","500","g"],["Kokosmilch","400","ml"],["Currypaste (mild)","2","EL"],["Paprika","1","Stück"],["Karotten","2","Stück"],["Basmatireis","300","g"]],
+    zubereitung: ["Hähnchen würfeln, anbraten.","Currypaste zugeben, kurz mitrösten, Kokosmilch einrühren.","Gemüse klein schneiden, zugeben, 15 Min. köcheln.","Mit Reis servieren."],
+    naehrwerte: { kcal: 1980, protein: 128, fett: 78, kh: 178, ballaststoffe: 12 } },
+  { id: 11, name: "Hähnchen-Gemüse-Spieße mit Couscous", category: "fleisch_gefluegel", carb: "vollkorn", weight: "leicht", zeit: 15, tags: ["fleisch"],
+    zutaten: [["Hähnchenbrustfilet","500","g"],["Zucchini","1","Stück"],["Paprika","2","Stück"],["Couscous (Vollkorn)","300","g"],["Olivenöl","3","EL"],["Zitrone","1","Stück"]],
+    zubereitung: ["Hähnchen und Gemüse würfeln, auf Spieße stecken.","Mit Olivenöl und Zitrone marinieren, im Ofen oder auf dem Grill garen.","Couscous mit heißer Brühe aufgießen, 5 Min. ziehen lassen.","Zusammen servieren."],
+    naehrwerte: { kcal: 1820, protein: 132, fett: 56, kh: 178, ballaststoffe: 14 } },
+  { id: 12, name: "Putengeschnetzeltes mit Pilzen und Bandnudeln", category: "fleisch_gefluegel", carb: "nudeln", weight: "mittel", zeit: 20, tags: ["fleisch"],
+    zutaten: [["Putenschnitzel","500","g"],["Champignons","300","g"],["Sahne","200","ml"],["Zwiebel","1","Stück"],["Bandnudeln","400","g"],["Gemüsebrühe","100","ml"]],
+    zubereitung: ["Pute in Streifen schneiden, scharf anbraten, herausnehmen.","Zwiebel und Pilze in der Pfanne anbraten.","Mit Brühe und Sahne ablöschen, Pute zurückgeben, 5 Min. köcheln.","Mit Bandnudeln servieren."],
+    naehrwerte: { kcal: 2150, protein: 138, fett: 78, kh: 218, ballaststoffe: 12 } },
+  { id: 13, name: "Hähnchen-Gemüse-Suppe mit Nudeln", category: "fleisch_gefluegel", carb: "nudeln", weight: "leicht", zeit: 25, tags: ["fleisch","kinderfreundlich"],
+    zutaten: [["Hähnchenbrustfilet","300","g"],["Suppennudeln","150","g"],["Karotten","3","Stück"],["Lauch","1","Stange"],["Sellerie","100","g"],["Hühnerbrühe","1.5","l"]],
+    zubereitung: ["Gemüse klein schneiden, in Brühe 15 Min. köcheln.","Hähnchen würfeln, mitkochen bis gar.","Nudeln separat kochen, in die Suppe geben."],
+    naehrwerte: { kcal: 1180, protein: 98, fett: 22, kh: 138, ballaststoffe: 10 } },
+  { id: 14, name: "Hähnchen-Wrap mit Salat und Joghurtsauce", category: "fleisch_gefluegel", carb: "sonstige", weight: "leicht", zeit: 15, tags: ["fleisch"],
+    zutaten: [["Hähnchenbrustfilet","450","g"],["Weizentortillas","8","Stück"],["Eisbergsalat","1","Kopf"],["Tomaten","3","Stück"],["Joghurt","150","g"],["Gewürze (Paprika, Kreuzkümmel)","1","TL"]],
+    zubereitung: ["Hähnchen würzen, in Streifen braten.","Salat und Tomaten klein schneiden.","Joghurt mit Gewürzen verrühren.","Tortillas füllen und einrollen."],
+    naehrwerte: { kcal: 1720, protein: 122, fett: 40, kh: 198, ballaststoffe: 12 } },
+  { id: 15, name: "Hähnchen-Auflauf mit Kartoffeln und Brokkoli", category: "fleisch_gefluegel", carb: "kartoffel", weight: "mittel", zeit: 40, tags: ["fleisch"],
+    zutaten: [["Hähnchenbrustfilet","450","g"],["Kartoffeln","700","g"],["Brokkoli","400","g"],["Sahne","200","ml"],["Käse, gerieben","150","g"]],
+    zubereitung: ["Kartoffeln in Scheiben, vorkochen.","Hähnchen würfeln, anbraten.","Alles mit Brokkoli in Auflaufform schichten, Sahne darüber, Käse bestreuen.","Bei 200°C 25 Min. überbacken."],
+    naehrwerte: { kcal: 2080, protein: 132, fett: 98, kh: 148, ballaststoffe: 14 } },
+  { id: 16, name: "Putenbällchen in Tomatensauce mit Spaghetti", category: "fleisch_gefluegel", carb: "nudeln", weight: "mittel", zeit: 30, tags: ["fleisch","kinderfreundlich"],
+    zutaten: [["Putenhackfleisch","500","g"],["Ei","1","Stück"],["Semmelbrösel","40","g"],["Passierte Tomaten","500","g"],["Spaghetti","400","g"],["Parmesan","40","g"]],
+    zubereitung: ["Hackfleisch mit Ei und Semmelbröseln vermengen, kleine Bällchen formen.","In Pfanne anbraten, passierte Tomaten zugeben, 15 Min. köcheln.","Spaghetti kochen, mit Sauce und Bällchen servieren, Parmesan darüber."],
+    naehrwerte: { kcal: 2180, protein: 142, fett: 52, kh: 268, ballaststoffe: 16 } },
+  { id: 17, name: "Hähnchen-Gemüse-Reispfanne (Asia-Style)", category: "fleisch_gefluegel", carb: "reis", weight: "leicht", zeit: 15, tags: ["fleisch","glutenfrei"],
+    zutaten: [["Hähnchenbrustfilet","450","g"],["Reis","300","g"],["Brokkoli","300","g"],["Karotten","2","Stück"],["Sojasauce","3","EL"],["Ingwer","1","Stück (daumengroß)"]],
+    zubereitung: ["Reis kochen.","Hähnchen in Streifen schneiden, mit Ingwer anbraten.","Gemüse zugeben, 5 Min. mitbraten, mit Sojasauce abschmecken.","Mit Reis servieren."],
+    naehrwerte: { kcal: 1780, protein: 130, fett: 36, kh: 218, ballaststoffe: 14 } },
+  { id: 18, name: "Putenschnitzel mit Kartoffelstampf und Möhrengemüse", category: "fleisch_gefluegel", carb: "kartoffel", weight: "mittel", zeit: 15, tags: ["fleisch","kinderfreundlich"],
+    zutaten: [["Putenschnitzel","4","Stück"],["Eier","1","Stück"],["Semmelbrösel","80","g"],["Kartoffeln","800","g"],["Karotten","400","g"],["Butter","30","g"]],
+    zubereitung: ["Schnitzel panieren (Mehl, Ei, Brösel) und goldbraun braten.","Kartoffeln kochen, mit Butter stampfen.","Karotten in Scheiben dünsten.","Zusammen anrichten."],
+    naehrwerte: { kcal: 2020, protein: 128, fett: 78, kh: 198, ballaststoffe: 14 } },
+  { id: 19, name: "Hähnchen-Gemüse-Eintopf mit Kartoffeln", category: "fleisch_gefluegel", carb: "kartoffel", weight: "leicht", zeit: 40, tags: ["fleisch","glutenfrei"],
+    zutaten: [["Hähnchenkeulen","4","Stück"],["Kartoffeln","600","g"],["Karotten","3","Stück"],["Sellerie","150","g"],["Lauch","1","Stange"],["Gemüsebrühe","1","l"]],
+    zubereitung: ["Hähnchenkeulen anbraten, mit Brühe ablöschen.","Gemüse würfeln, zugeben, 30 Min. köcheln bis das Fleisch gar ist.","Fleisch vom Knochen lösen, zurück in den Eintopf geben, servieren."],
+    naehrwerte: { kcal: 1620, protein: 118, fett: 62, kh: 128, ballaststoffe: 16 } },
+  { id: 20, name: "Rindergulasch mit Kartoffeln", category: "fleisch_rot", carb: "kartoffel", weight: "schwer", zeit: 110, tags: ["fleisch","glutenfrei"],
+    zutaten: [["Rindergulasch","600","g"],["Zwiebeln","2","Stück"],["Paprika","2","Stück"],["Paprikapulver","2","EL"],["Rinderbrühe","400","ml"],["Kartoffeln","800","g"]],
+    zubereitung: ["Fleisch scharf anbraten, Zwiebeln zugeben, glasig dünsten.","Paprikapulver zugeben, mit Brühe ablöschen.","Paprika zugeben, 60–90 Min. schmoren lassen.","Kartoffeln kochen, dazu servieren."],
+    naehrwerte: { kcal: 2080, protein: 138, fett: 72, kh: 168, ballaststoffe: 16 } },
+  { id: 21, name: "Spaghetti Bolognese", category: "fleisch_rot", carb: "nudeln", weight: "mittel", zeit: 35, tags: ["fleisch","kinderfreundlich"],
+    zutaten: [["Rinderhackfleisch","500","g"],["Zwiebel","1","Stück"],["Karotte","1","Stück"],["Passierte Tomaten","500","g"],["Spaghetti","400","g"],["Parmesan","40","g"]],
+    zubereitung: ["Zwiebel und Karotte fein würfeln, anbraten.","Hackfleisch zugeben, krümelig anbraten.","Tomaten zugeben, 20 Min. köcheln lassen.","Spaghetti kochen, mit Sauce und Parmesan servieren."],
+    naehrwerte: { kcal: 2150, protein: 132, fett: 68, kh: 258, ballaststoffe: 16 } },
+  { id: 22, name: "Rinderbraten mit Rotkohl und Kartoffelklößen", category: "fleisch_rot", carb: "kartoffel", weight: "schwer", zeit: 140, tags: ["fleisch"],
+    zutaten: [["Rinderbraten","800","g"],["Rotkohl (Glas oder frisch)","500","g"],["Kartoffelklöße (halb & halb)","8","Stück"],["Zwiebeln","1","Stück"],["Rinderbrühe","300","ml"]],
+    zubereitung: ["Braten rundherum anbraten, mit Brühe im Ofen 2 Std. bei 160°C schmoren.","Rotkohl erwärmen.","Klöße nach Packungsangabe kochen.","Braten aufschneiden, mit Sauce, Rotkohl und Klößen servieren."],
+    naehrwerte: { kcal: 2480, protein: 156, fett: 98, kh: 198, ballaststoffe: 18 } },
+  { id: 23, name: "Chili con Carne mit Reis", category: "fleisch_rot", carb: "reis", weight: "mittel", zeit: 35, tags: ["fleisch","glutenfrei"],
+    zutaten: [["Rinderhackfleisch","500","g"],["Kidneybohnen, Dose","1","Dose"],["Mais, Dose","1","Dose"],["Passierte Tomaten","400","g"],["Paprika","1","Stück"],["Reis","300","g"],["Chilipulver (für Kinder mild dosieren)","1","TL"]],
+    zubereitung: ["Hackfleisch anbraten, Paprika zugeben.","Tomaten, Bohnen und Mais zugeben, mild würzen, 20 Min. köcheln.","Mit Reis servieren (Kinderportion separat mild würzen)."],
+    naehrwerte: { kcal: 2280, protein: 148, fett: 58, kh: 268, ballaststoffe: 32 } },
+  { id: 24, name: "Frikadellen mit Kartoffelsalat", category: "fleisch_rot", carb: "kartoffel", weight: "mittel", zeit: 15, tags: ["fleisch","kinderfreundlich"],
+    zutaten: [["Rinder-/Schweinehack gemischt","500","g"],["Zwiebel","1","Stück"],["Ei","1","Stück"],["Semmelbrösel","40","g"],["Kartoffeln","800","g"],["Gewürzgurken","2","Stück"],["Mayonnaise/Joghurt","100","g"]],
+    zubereitung: ["Hack mit Zwiebel, Ei und Semmelbröseln vermengen, Frikadellen formen, braten.","Kartoffeln kochen, in Scheiben schneiden.","Mit Gurken und Mayo-Joghurt-Sauce zum Salat anrichten.","Zusammen servieren."],
+    naehrwerte: { kcal: 2150, protein: 122, fett: 108, kh: 158, ballaststoffe: 14 } },
+  { id: 25, name: "Rindfleisch-Gemüse-Wok mit Reisnudeln", category: "fleisch_rot", carb: "sonstige", weight: "mittel", zeit: 15, tags: ["fleisch"],
+    zutaten: [["Rinderstreifen (Pfeffersteak)","450","g"],["Reisnudeln","300","g"],["Paprika","2","Stück"],["Brokkoli","250","g"],["Sojasauce","3","EL"],["Knoblauch","2","Zehen"]],
+    zubereitung: ["Reisnudeln nach Packungsangabe einlegen.","Rind scharf anbraten, herausnehmen.","Gemüse im Wok anbraten, Fleisch zurückgeben, mit Sojasauce abschmecken.","Nudeln unterheben, servieren."],
+    naehrwerte: { kcal: 1920, protein: 122, fett: 56, kh: 222, ballaststoffe: 12 } },
+  { id: 26, name: "Kartoffel-Hackfleisch-Auflauf", category: "fleisch_rot", carb: "kartoffel", weight: "mittel", zeit: 50, tags: ["fleisch","kinderfreundlich"],
+    zutaten: [["Rinderhackfleisch","450","g"],["Kartoffeln","800","g"],["Zwiebel","1","Stück"],["Sahne","200","ml"],["Käse, gerieben","150","g"],["Lauchzwiebeln","2","Stück"]],
+    zubereitung: ["Kartoffeln in dünne Scheiben schneiden.","Hackfleisch mit Zwiebel anbraten.","Schichtweise in Auflaufform: Kartoffeln, Hack, Sahne, Käse.","Bei 200°C ca. 35 Min. backen."],
+    naehrwerte: { kcal: 2280, protein: 118, fett: 128, kh: 168, ballaststoffe: 14 } },
+  { id: 27, name: "Gemüse-Linsen-Curry mit Reis", category: "vegan", carb: "reis", weight: "mittel", zeit: 30, tags: ["vegan","vegetarisch","glutenfrei","hülsenfrüchte"],
+    zutaten: [["Rote Linsen","250","g"],["Kokosmilch","400","ml"],["Karotten","2","Stück"],["Spinat (frisch oder TK)","200","g"],["Currypulver","2","EL"],["Reis","300","g"]],
+    zubereitung: ["Linsen abspülen, mit Kokosmilch und etwas Wasser aufsetzen, 15 Min. köcheln.","Karotten würfeln, zugeben.","Currypulver einrühren, Spinat kurz vor Ende zugeben.","Mit Reis servieren."],
+    naehrwerte: { kcal: 1850, protein: 68, fett: 58, kh: 248, ballaststoffe: 38 } },
+  { id: 28, name: "Gemüselasagne", category: "vegetarisch", carb: "nudeln", weight: "mittel", zeit: 50, tags: ["vegetarisch"],
+    zutaten: [["Lasagneplatten","250","g"],["Zucchini","2","Stück"],["Aubergine","1","Stück"],["Passierte Tomaten","500","g"],["Béchamelsauce","500","ml"],["Käse, gerieben","200","g"]],
+    zubereitung: ["Gemüse in Scheiben schneiden, kurz anbraten.","Schichtweise mit Platten, Tomatensauce, Gemüse und Béchamel in Form schichten.","Mit Käse bestreuen, bei 180°C 35 Min. backen."],
+    naehrwerte: { kcal: 2380, protein: 88, fett: 118, kh: 238, ballaststoffe: 16 } },
+  { id: 29, name: "Gemüse-Bratlinge mit Kartoffelpüree", category: "vegetarisch", carb: "kartoffel", weight: "mittel", zeit: 15, tags: ["vegetarisch","kinderfreundlich"],
+    zutaten: [["Karotten","300","g"],["Haferflocken","100","g"],["Eier","2","Stück"],["Käse, gerieben","100","g"],["Kartoffeln","800","g"],["Milch","100","ml"],["Butter","50","g"]],
+    zubereitung: ["Karotten fein reiben, mit Haferflocken, Ei und Käse vermengen, würzen.","Bratlinge formen, in der Pfanne goldbraun braten.","Kartoffeln kochen, mit Milch und Butter zu Püree stampfen.","Zusammen servieren."],
+    naehrwerte: { kcal: 1980, protein: 72, fett: 78, kh: 228, ballaststoffe: 22 } },
+  { id: 30, name: "Kichererbsen-Gemüse-Curry mit Naan", category: "vegan", carb: "sonstige", weight: "mittel", zeit: 25, tags: ["vegan","vegetarisch","hülsenfrüchte"],
+    zutaten: [["Kichererbsen, Dose","2","Dosen"],["Tomaten, gehackt, Dose","400","g"],["Spinat","200","g"],["Kokosmilch","200","ml"],["Currypaste","2","EL"],["Naan-Brot","4","Stück"]],
+    zubereitung: ["Currypaste anrösten, Tomaten und Kokosmilch zugeben.","Kichererbsen zugeben, 10 Min. köcheln.","Spinat unterheben, kurz ziehen lassen.","Mit warmem Naan servieren."],
+    naehrwerte: { kcal: 1980, protein: 78, fett: 62, kh: 268, ballaststoffe: 42 } },
+  { id: 31, name: "Käsespätzle mit Röstzwiebeln und Salat", category: "vegetarisch", carb: "vollkorn", weight: "schwer", zeit: 20, tags: ["vegetarisch","kinderfreundlich"],
+    zutaten: [["Spätzle","600","g"],["Bergkäse, gerieben","250","g"],["Zwiebeln","3","Stück"],["Butter","30","g"],["Gemischter Salat","200","g"]],
+    zubereitung: ["Zwiebeln in Ringe schneiden, in Butter knusprig braten.","Spätzle kochen, abwechselnd mit Käse in Topf schichten, schmelzen lassen.","Mit Röstzwiebeln bestreuen, Salat dazu servieren."],
+    naehrwerte: { kcal: 2580, protein: 98, fett: 128, kh: 258, ballaststoffe: 12 } },
+  { id: 32, name: "Gefüllte Paprika mit Reis und Tomatensauce", category: "vegetarisch", carb: "reis", weight: "mittel", zeit: 45, tags: ["vegetarisch"],
+    zutaten: [["Paprikaschoten","8","Stück (klein)"],["Reis","200","g"],["Käse, gerieben","150","g"],["Zwiebel","1","Stück"],["Passierte Tomaten","500","g"]],
+    zubereitung: ["Reis vorkochen, mit Zwiebel und Käse mischen, würzen.","Paprika halbieren, entkernen, mit Reismischung füllen.","In Auflaufform mit Tomatensauce stellen, bei 180°C 30 Min. backen."],
+    naehrwerte: { kcal: 1780, protein: 68, fett: 58, kh: 228, ballaststoffe: 18 } },
+  { id: 33, name: "Veggie-Burger mit Süßkartoffelpommes", category: "vegetarisch", carb: "sonstige", weight: "mittel", zeit: 40, tags: ["vegetarisch"],
+    zutaten: [["Veggie-Patties (Kichererbsen/Bohnen)","4","Stück"],["Burgerbrötchen","4","Stück"],["Süßkartoffeln","600","g"],["Salatblätter und Tomaten","1","Portion"],["Olivenöl","2","EL"]],
+    zubereitung: ["Süßkartoffeln in Spalten schneiden, mit Öl im Ofen 25 Min. backen.","Patties braten.","Brötchen mit Salat, Tomaten und Patty belegen.","Mit Süßkartoffelpommes servieren."],
+    naehrwerte: { kcal: 2080, protein: 62, fett: 68, kh: 288, ballaststoffe: 28 } },
+  { id: 34, name: "Ratatouille mit Couscous", category: "vegan", carb: "vollkorn", weight: "leicht", zeit: 35, tags: ["vegan","vegetarisch"],
+    zutaten: [["Zucchini","2","Stück"],["Aubergine","1","Stück"],["Paprika","2","Stück"],["Tomaten","4","Stück"],["Couscous (Vollkorn)","300","g"],["Olivenöl und Kräuter","3","EL"]],
+    zubereitung: ["Alles Gemüse würfeln, in Olivenöl anbraten.","Mit Kräutern (Thymian, Rosmarin) 20 Min. schmoren.","Couscous mit Brühe aufgießen, 5 Min. ziehen lassen.","Zusammen servieren."],
+    naehrwerte: { kcal: 1420, protein: 42, fett: 38, kh: 218, ballaststoffe: 28 } },
+  { id: 35, name: "Tomaten-Mozzarella-Pasta", category: "vegetarisch", carb: "nudeln", weight: "leicht", zeit: 15, tags: ["vegetarisch","kinderfreundlich"],
+    zutaten: [["Penne","400","g"],["Kirschtomaten","400","g"],["Mozzarella","250","g"],["Basilikum","1","Bund"],["Olivenöl","3","EL"],["Knoblauch","1","Zehe"]],
+    zubereitung: ["Nudeln kochen.","Tomaten halbieren, mit Knoblauch in Olivenöl kurz anschwitzen.","Mozzarella würfeln, mit Nudeln und Tomaten vermengen.","Mit Basilikum bestreuen."],
+    naehrwerte: { kcal: 2080, protein: 78, fett: 78, kh: 258, ballaststoffe: 14 } },
+  { id: 36, name: "Linsen-Bolognese mit Spaghetti", category: "vegan", carb: "nudeln", weight: "mittel", zeit: 35, tags: ["vegan","vegetarisch","hülsenfrüchte"],
+    zutaten: [["Rote Linsen","250","g"],["Karotte","1","Stück"],["Zwiebel","1","Stück"],["Passierte Tomaten","500","g"],["Spaghetti","400","g"]],
+    zubereitung: ["Zwiebel und Karotte fein würfeln, anbraten.","Linsen zugeben, mit Tomaten und etwas Wasser 20 Min. köcheln, bis weich.","Spaghetti kochen, mit Sauce servieren."],
+    naehrwerte: { kcal: 1980, protein: 88, fett: 18, kh: 358, ballaststoffe: 42 } },
+  { id: 37, name: "Gemüse-Stir-Fry mit Tofu und Reis", category: "vegan", carb: "reis", weight: "leicht", zeit: 15, tags: ["vegan","vegetarisch","glutenfrei"],
+    zutaten: [["Tofu, fest","400","g"],["Brokkoli","300","g"],["Paprika","2","Stück"],["Karotten","2","Stück"],["Sojasauce","3","EL"],["Reis","300","g"]],
+    zubereitung: ["Tofu würfeln, knusprig anbraten, herausnehmen.","Gemüse im Wok anbraten, Tofu zurückgeben.","Mit Sojasauce abschmecken, mit Reis servieren."],
+    naehrwerte: { kcal: 1680, protein: 78, fett: 42, kh: 218, ballaststoffe: 18 } },
+  { id: 38, name: "Kartoffel-Gemüse-Frittata", category: "vegetarisch", carb: "kartoffel", weight: "leicht", zeit: 15, tags: ["vegetarisch","glutenfrei"],
+    zutaten: [["Kartoffeln","500","g"],["Eier","8","Stück"],["Paprika","1","Stück"],["Lauchzwiebeln","3","Stück"],["Käse, gerieben","100","g"],["Gemischter Salat","200","g"]],
+    zubereitung: ["Kartoffeln in dünne Scheiben kochen.","Mit Paprika und Lauchzwiebeln in Pfanne anbraten.","Verquirlte Eier mit Käse darüber gießen, bei niedriger Hitze stocken lassen, evtl. im Ofen fertig backen.","Mit Salat servieren."],
+    naehrwerte: { kcal: 1780, protein: 92, fett: 98, kh: 108, ballaststoffe: 12 } },
+  { id: 39, name: "Blumenkohl-Kichererbsen-Curry mit Naan", category: "vegan", carb: "sonstige", weight: "mittel", zeit: 35, tags: ["vegan","vegetarisch","hülsenfrüchte"],
+    zutaten: [["Kichererbsen, Dose","1","Dose"],["Blumenkohl","1","Kopf"],["Kartoffeln","300","g"],["Kokosmilch","300","ml"],["Currypulver","2","EL"],["Naan-Brot","4","Stück"]],
+    zubereitung: ["Blumenkohl in Röschen teilen, Kartoffeln würfeln.","Mit Currypulver anbraten, Kokosmilch zugeben, 15 Min. köcheln.","Kichererbsen zugeben, weitere 5 Min. köcheln.","Mit Naan servieren."],
+    naehrwerte: { kcal: 1880, protein: 58, fett: 68, kh: 248, ballaststoffe: 32 } },
+  { id: 40, name: "Bunte Quinoa-Bowl mit Gemüse und Feta", category: "vegetarisch", carb: "vollkorn", weight: "leicht", zeit: 15, tags: ["vegetarisch","glutenfrei"],
+    zutaten: [["Quinoa","250","g"],["Gurke","1","Stück"],["Kirschtomaten","300","g"],["Feta","200","g"],["Olivenöl und Zitrone","3","EL"]],
+    zubereitung: ["Quinoa nach Packungsangabe kochen, abkühlen lassen.","Gurke und Tomaten würfeln, Feta zerbröckeln.","Alles mischen, mit Olivenöl und Zitrone anmachen."],
+    naehrwerte: { kcal: 1680, protein: 62, fett: 78, kh: 168, ballaststoffe: 18 } },
+  { id: 41, name: "Süßkartoffel-Linsen-Eintopf", category: "vegan", carb: "sonstige", weight: "mittel", zeit: 35, tags: ["vegan","vegetarisch","hülsenfrüchte","glutenfrei"],
+    zutaten: [["Süßkartoffeln","600","g"],["Rote Linsen","200","g"],["Kokosmilch","300","ml"],["Gemüsebrühe","500","ml"],["Zwiebel und Ingwer","1","Portion"]],
+    zubereitung: ["Zwiebel und Ingwer anschwitzen.","Süßkartoffeln würfeln, mit Linsen, Brühe und Kokosmilch 20 Min. köcheln.","Pürieren oder stückig lassen, servieren."],
+    naehrwerte: { kcal: 1620, protein: 52, fett: 48, kh: 248, ballaststoffe: 36 } },
+  { id: 42, name: "Schweinemedaillons mit Kartoffelgratin und Salat", category: "fleisch_rot", carb: "kartoffel", weight: "schwer", zeit: 60, tags: ["fleisch"],
+    zutaten: [["Schweinefilet","500","g"],["Kartoffeln","800","g"],["Sahne","250","ml"],["Käse, gerieben","100","g"],["Gemischter Salat","200","g"]],
+    zubereitung: ["Kartoffeln in Scheiben schichten, mit Sahne und Käse im Ofen 40 Min. bei 180°C backen.","Filet in Medaillons schneiden, scharf anbraten.","Mit Salat servieren."],
+    naehrwerte: { kcal: 2280, protein: 138, fett: 128, kh: 148, ballaststoffe: 12 } },
+  { id: 43, name: "Hähnchen-Caesar-Salat mit Croutons", category: "fleisch_gefluegel", carb: "sonstige", weight: "leicht", zeit: 15, tags: ["fleisch"],
+    zutaten: [["Hähnchenbrustfilet","400","g"],["Romana-Salat","2","Köpfe"],["Parmesan","50","g"],["Weißbrot (für Croutons)","150","g"],["Joghurt-Dressing","150","g"]],
+    zubereitung: ["Hähnchen braten, in Streifen schneiden.","Brot würfeln, in Öl knusprig braten (Croutons).","Salat waschen, mit Dressing, Hähnchen, Parmesan und Croutons anrichten."],
+    naehrwerte: { kcal: 1680, protein: 122, fett: 68, kh: 118, ballaststoffe: 10 } },
+  { id: 44, name: "Vegetarische Pizza mit Gemüse und Mozzarella", category: "vegetarisch", carb: "vollkorn", weight: "mittel", zeit: 30, tags: ["vegetarisch","kinderfreundlich"],
+    zutaten: [["Pizzateig (Vollkorn)","2","Rollen"],["Passierte Tomaten","300","g"],["Mozzarella","300","g"],["Paprika, Zucchini, Champignons","400","g"]],
+    zubereitung: ["Teig ausrollen, mit Tomatensauce bestreichen.","Gemüse in dünnen Scheiben verteilen, mit Mozzarella belegen.","Bei 220°C 15 Min. backen."],
+    naehrwerte: { kcal: 2480, protein: 98, fett: 88, kh: 318, ballaststoffe: 18 } },
+  { id: 45, name: "Lachs-Gemüse-Päckchen aus dem Ofen mit Reis", category: "fisch", carb: "reis", weight: "leicht", zeit: 30, tags: ["fisch","glutenfrei"],
+    zutaten: [["Lachsfilet","500","g"],["Zucchini","1","Stück"],["Kirschtomaten","200","g"],["Zitrone","1","Stück"],["Reis","300","g"],["Olivenöl","2","EL"]],
+    zubereitung: ["Lachs mit Gemüse in Backpapier-Päckchen packen, Zitrone und Öl zugeben.","Bei 200°C 20 Min. im Ofen garen.","Mit Reis servieren."],
+    naehrwerte: { kcal: 1580, protein: 112, fett: 56, kh: 168, ballaststoffe: 12 } },
+
+  // ---------- WEITERE FISCHGERICHTE (10) ----------
+  { id: 46, name: "Fischfrikadellen mit Remoulade und Kartoffelsalat", category: "fisch", carb: "kartoffel", weight: "mittel", zeit: 15, tags: ["fisch","kinderfreundlich"],
+    zutaten: [["Seelachsfilet","500","g"],["Zwiebel","1","Stück"],["Ei","1","Stück"],["Semmelbrösel","60","g"],["Kartoffeln","700","g"],["Remoulade","100","g"]],
+    zubereitung: ["Fisch fein hacken oder pürieren, mit Zwiebel, Ei und Semmelbröseln vermengen.","Frikadellen formen, in der Pfanne goldbraun braten.","Kartoffeln kochen, in Scheiben schneiden, zu Salat anmachen.","Mit Remoulade servieren."],
+    naehrwerte: { kcal: 1780, protein: 108, fett: 68, kh: 158, ballaststoffe: 12 } },
+  { id: 47, name: "Risotto mit Garnelen und Erbsen", category: "fisch", carb: "reis", weight: "mittel", zeit: 35, tags: ["fisch","glutenfrei"],
+    zutaten: [["Garnelen, geschält","350","g"],["Risottoreis","300","g"],["Erbsen (TK)","200","g"],["Gemüsebrühe","800","ml"],["Weißwein (optional)","100","ml"],["Parmesan","40","g"],["Butter","20","g"]],
+    zubereitung: ["Reis in Butter glasig anschwitzen.","Nach und nach heiße Brühe angießen, ständig rühren, ca. 18 Min. köcheln.","Garnelen und Erbsen in den letzten 5 Min. zugeben.","Mit Parmesan vollenden."],
+    naehrwerte: { kcal: 1880, protein: 92, fett: 48, kh: 248, ballaststoffe: 12 } },
+  { id: 48, name: "Gebackener Lachs mit Honig-Senf-Glasur und Ofengemüse", category: "fisch", carb: "kartoffel", weight: "mittel", zeit: 45, tags: ["fisch","glutenfrei"],
+    zutaten: [["Lachsfilet","500","g"],["Honig","2","EL"],["Senf","2","EL"],["Kartoffeln","700","g"],["Karotten","3","Stück"],["Olivenöl","2","EL"]],
+    zubereitung: ["Kartoffeln und Karotten in Spalten schneiden, mit Öl im Ofen 25 Min. bei 200°C rösten.","Honig und Senf verrühren, Lachs damit bestreichen.","Lachs die letzten 12 Min. mit ins Ofenblech geben.","Zusammen servieren."],
+    naehrwerte: { kcal: 1780, protein: 118, fett: 68, kh: 148, ballaststoffe: 14 } },
+  { id: 49, name: "Thunfisch-Nudelauflauf mit Gemüse", category: "fisch", carb: "nudeln", weight: "mittel", zeit: 35, tags: ["fisch","kinderfreundlich"],
+    zutaten: [["Thunfisch in Wasser, Dose","2","Dosen (à 150g)"],["Fusilli","400","g"],["Erbsen und Mais (TK)","300","g"],["Sahne","200","ml"],["Käse, gerieben","150","g"]],
+    zubereitung: ["Nudeln kochen.","Mit Thunfisch, Gemüse und Sahne vermengen, in Auflaufform geben.","Mit Käse bestreuen, bei 200°C 20 Min. überbacken."],
+    naehrwerte: { kcal: 2180, protein: 122, fett: 78, kh: 248, ballaststoffe: 14 } },
+  { id: 50, name: "Pollack in Senfsauce mit Salzkartoffeln", category: "fisch", carb: "kartoffel", weight: "leicht", zeit: 20, tags: ["fisch","glutenfrei"],
+    zutaten: [["Pollackfilet","500","g"],["Senf","2","EL"],["Sahne","150","ml"],["Gemüsebrühe","150","ml"],["Kartoffeln","800","g"],["Dill","1","Bund"]],
+    zubereitung: ["Kartoffeln kochen.","Fisch in Brühe pochieren, ca. 8 Min.","Sahne und Senf verrühren, erwärmen, mit Dill abschmecken.","Sauce über Fisch und Kartoffeln geben."],
+    naehrwerte: { kcal: 1580, protein: 108, fett: 58, kh: 138, ballaststoffe: 12 } },
+  { id: 51, name: "Lachs-Poke-Bowl mit Reis und Edamame", category: "fisch", carb: "reis", weight: "leicht", zeit: 15, tags: ["fisch","glutenfrei"],
+    zutaten: [["Lachsfilet (sehr frisch)","400","g"],["Reis","300","g"],["Edamame","200","g"],["Gurke","1","Stück"],["Avocado","1","Stück"],["Sojasauce","2","EL"]],
+    zubereitung: ["Reis kochen, abkühlen lassen.","Lachs würfeln, in Sojasauce kurz marinieren (für Kinder den Fisch gebraten statt roh anbieten).","Gemüse und Avocado klein schneiden.","Alles in Schalen anrichten."],
+    naehrwerte: { kcal: 1680, protein: 92, fett: 68, kh: 168, ballaststoffe: 18 } },
+  { id: 52, name: "Fischcurry mit Kokosmilch und Reis", category: "fisch", carb: "reis", weight: "mittel", zeit: 30, tags: ["fisch","glutenfrei"],
+    zutaten: [["Weißfischfilet","500","g"],["Kokosmilch","400","ml"],["Currypaste (mild)","2","EL"],["Paprika","1","Stück"],["Spinat","150","g"],["Reis","300","g"]],
+    zubereitung: ["Currypaste anrösten, Kokosmilch zugeben.","Paprika zugeben, 10 Min. köcheln.","Fisch würfeln, 6 Min. mitgaren, Spinat unterheben.","Mit Reis servieren."],
+    naehrwerte: { kcal: 1780, protein: 102, fett: 68, kh: 188, ballaststoffe: 14 } },
+  { id: 53, name: "Backfisch-Brötchen mit Krautsalat", category: "fisch", carb: "sonstige", weight: "mittel", zeit: 15, tags: ["fisch","kinderfreundlich"],
+    zutaten: [["Backfisch (paniert)","500","g"],["Brötchen","4","Stück"],["Weißkohl","250","g"],["Joghurt","100","g"],["Salatblätter","1","Portion"]],
+    zubereitung: ["Backfisch nach Packungsangabe braten oder backen.","Weißkohl fein hobeln, mit Joghurt zu Krautsalat anmachen.","Brötchen mit Salat, Fisch und Krautsalat belegen."],
+    naehrwerte: { kcal: 1880, protein: 92, fett: 68, kh: 218, ballaststoffe: 14 } },
+  { id: 54, name: "Lachsspieße vom Grill mit Couscous-Salat", category: "fisch", carb: "vollkorn", weight: "leicht", zeit: 15, tags: ["fisch"],
+    zutaten: [["Lachsfilet","500","g"],["Zucchini","1","Stück"],["Paprika","1","Stück"],["Couscous (Vollkorn)","250","g"],["Kirschtomaten","200","g"],["Olivenöl & Zitrone","3","EL"]],
+    zubereitung: ["Lachs und Gemüse würfeln, auf Spieße stecken, grillen oder im Ofen garen.","Couscous mit heißer Brühe aufgießen, ziehen lassen.","Mit Tomaten, Öl und Zitrone zum Salat mischen.","Zusammen servieren."],
+    naehrwerte: { kcal: 1680, protein: 110, fett: 58, kh: 158, ballaststoffe: 16 } },
+  { id: 55, name: "Fisch-Gratin mit Lauch und Kartoffeln", category: "fisch", carb: "kartoffel", weight: "mittel", zeit: 40, tags: ["fisch"],
+    zutaten: [["Kabeljaufilet","450","g"],["Lauch","2","Stangen"],["Kartoffeln","700","g"],["Sahne","200","ml"],["Käse, gerieben","120","g"]],
+    zubereitung: ["Kartoffeln in Scheiben vorkochen.","Lauch in Ringe schneiden, kurz andünsten.","Fisch, Kartoffeln und Lauch in Auflaufform schichten, Sahne darüber, Käse bestreuen.","Bei 190°C 25 Min. überbacken."],
+    naehrwerte: { kcal: 1980, protein: 112, fett: 98, kh: 138, ballaststoffe: 12 } },
+
+  // ---------- WEITERE GEFLÜGELGERICHTE (10) ----------
+  { id: 56, name: "Hähnchenschnitzel mit Pommes und Erbsen", category: "fleisch_gefluegel", carb: "kartoffel", weight: "mittel", zeit: 40, tags: ["fleisch","kinderfreundlich"],
+    zutaten: [["Hähnchenschnitzel, paniert","4","Stück"],["Kartoffeln (für Ofenpommes)","800","g"],["TK-Erbsen","250","g"],["Olivenöl","2","EL"]],
+    zubereitung: ["Kartoffeln in Stifte schneiden, mit Öl im Ofen 25 Min. bei 200°C backen.","Schnitzel in der Pfanne goldbraun braten.","Erbsen kurz kochen.","Zusammen servieren."],
+    naehrwerte: { kcal: 2080, protein: 128, fett: 78, kh: 208, ballaststoffe: 16 } },
+  { id: 57, name: "Hähnchen-Gemüse-Pfanne mit Süßkartoffeln", category: "fleisch_gefluegel", carb: "sonstige", weight: "leicht", zeit: 25, tags: ["fleisch","glutenfrei"],
+    zutaten: [["Hähnchenbrustfilet","450","g"],["Süßkartoffeln","500","g"],["Zucchini","1","Stück"],["Paprika","1","Stück"],["Olivenöl","2","EL"],["Kräuter","1","TL"]],
+    zubereitung: ["Süßkartoffeln würfeln, in Öl anbraten, 10 Min. garen.","Hähnchen würfeln, zugeben, anbraten.","Gemüse zugeben, weitere 8 Min. braten, würzen, servieren."],
+    naehrwerte: { kcal: 1680, protein: 122, fett: 48, kh: 158, ballaststoffe: 18 } },
+  { id: 58, name: "Putenröllchen gefüllt mit Spinat und Käse, dazu Reis", category: "fleisch_gefluegel", carb: "reis", weight: "mittel", zeit: 30, tags: ["fleisch"],
+    zutaten: [["Putenschnitzel","4","Stück"],["Blattspinat (TK)","200","g"],["Käse, gerieben","100","g"],["Reis","300","g"],["Olivenöl","2","EL"]],
+    zubereitung: ["Schnitzel flach klopfen, mit Spinat und Käse belegen, aufrollen, mit Zahnstocher fixieren.","In Öl rundherum anbraten, dann 15 Min. bei 180°C im Ofen fertig garen.","Mit Reis servieren."],
+    naehrwerte: { kcal: 1780, protein: 138, fett: 58, kh: 168, ballaststoffe: 10 } },
+  { id: 59, name: "Hähnchen-Nudelsalat mit Pesto", category: "fleisch_gefluegel", carb: "nudeln", weight: "leicht", zeit: 15, tags: ["fleisch"],
+    zutaten: [["Hähnchenbrustfilet","400","g"],["Fusilli","350","g"],["Kirschtomaten","250","g"],["Pesto","100","g"],["Pinienkerne (optional)","20","g"]],
+    zubereitung: ["Nudeln kochen, abkühlen lassen.","Hähnchen braten, in Streifen schneiden.","Alles mit Pesto und halbierten Tomaten vermengen.","Mit Pinienkernen bestreuen."],
+    naehrwerte: { kcal: 2080, protein: 118, fett: 78, kh: 218, ballaststoffe: 12 } },
+  { id: 60, name: "Hähnchen-Frikadellen mit Kartoffel-Gurken-Salat", category: "fleisch_gefluegel", carb: "kartoffel", weight: "mittel", zeit: 15, tags: ["fleisch","kinderfreundlich"],
+    zutaten: [["Hähnchenhackfleisch","500","g"],["Zwiebel","1","Stück"],["Ei","1","Stück"],["Semmelbrösel","50","g"],["Kartoffeln","700","g"],["Gurke","1","Stück"]],
+    zubereitung: ["Hack mit Zwiebel, Ei und Semmelbröseln vermengen, Frikadellen formen, braten.","Kartoffeln kochen, in Scheiben schneiden.","Gurke in Scheiben schneiden, mit Joghurt-Dressing zum Salat anmachen.","Zusammen servieren."],
+    naehrwerte: { kcal: 1880, protein: 132, fett: 68, kh: 158, ballaststoffe: 12 } },
+  { id: 61, name: "Putengulasch mit Paprika und Reis", category: "fleisch_gefluegel", carb: "reis", weight: "mittel", zeit: 25, tags: ["fleisch","glutenfrei"],
+    zutaten: [["Putengeschnetzeltes","500","g"],["Paprika","2","Stück"],["Zwiebel","1","Stück"],["Paprikapulver","1","EL"],["Sahne","150","ml"],["Reis","300","g"]],
+    zubereitung: ["Zwiebel und Paprika anbraten.","Putenfleisch zugeben, anbraten, mit Paprikapulver würzen.","Sahne einrühren, 10 Min. köcheln.","Mit Reis servieren."],
+    naehrwerte: { kcal: 1880, protein: 128, fett: 68, kh: 178, ballaststoffe: 12 } },
+  { id: 62, name: "Hähnchen-Burger mit Ofengemüse", category: "fleisch_gefluegel", carb: "sonstige", weight: "mittel", zeit: 35, tags: ["fleisch"],
+    zutaten: [["Hähnchenbrustfilet","450","g"],["Burgerbrötchen","4","Stück"],["Salatblätter und Tomaten","1","Portion"],["Zucchini und Paprika (Ofengemüse)","500","g"],["Olivenöl","2","EL"]],
+    zubereitung: ["Gemüse würfeln, mit Öl im Ofen 20 Min. rösten.","Hähnchenfilets braten.","Brötchen mit Salat, Tomaten und Hähnchen belegen.","Mit Ofengemüse servieren."],
+    naehrwerte: { kcal: 1880, protein: 128, fett: 58, kh: 188, ballaststoffe: 16 } },
+  { id: 63, name: "Hähnchen-Tikka-Masala mit Reis", category: "fleisch_gefluegel", carb: "reis", weight: "mittel", zeit: 30, tags: ["fleisch","glutenfrei"],
+    zutaten: [["Hähnchenbrustfilet","500","g"],["Joghurt","150","g"],["Passierte Tomaten","400","g"],["Currygewürz (mild)","2","EL"],["Sahne","100","ml"],["Reis","300","g"]],
+    zubereitung: ["Hähnchen würfeln, in Joghurt und Gewürzen kurz marinieren.","In Pfanne anbraten, Tomaten zugeben, 15 Min. köcheln.","Sahne einrühren, abschmecken.","Mit Reis servieren."],
+    naehrwerte: { kcal: 1980, protein: 132, fett: 68, kh: 188, ballaststoffe: 12 } },
+  { id: 64, name: "Putenspieße mit Joghurt-Dip und Fladenbrot", category: "fleisch_gefluegel", carb: "sonstige", weight: "leicht", zeit: 15, tags: ["fleisch"],
+    zutaten: [["Putenbrustfilet","450","g"],["Joghurt","150","g"],["Knoblauch","1","Zehe"],["Fladenbrot","4","Stück"],["Salatblätter und Tomaten","1","Portion"]],
+    zubereitung: ["Pute würfeln, auf Spieße stecken, würzen, braten oder grillen.","Joghurt mit Knoblauch zu Dip verrühren.","Fladenbrot erwärmen, mit Salat, Spießen und Dip servieren."],
+    naehrwerte: { kcal: 1680, protein: 128, fett: 38, kh: 188, ballaststoffe: 12 } },
+  { id: 65, name: "Hähnchen-Reis-Eintopf mit Gemüse", category: "fleisch_gefluegel", carb: "reis", weight: "leicht", zeit: 30, tags: ["fleisch","kinderfreundlich","glutenfrei"],
+    zutaten: [["Hähnchenbrustfilet","400","g"],["Reis","200","g"],["Karotten","3","Stück"],["Erbsen (TK)","200","g"],["Hühnerbrühe","1.2","l"]],
+    zubereitung: ["Hähnchen würfeln, in Brühe gar köcheln.","Reis und Karotten zugeben, 15 Min. köcheln.","Erbsen in den letzten 5 Min. zugeben, servieren."],
+    naehrwerte: { kcal: 1480, protein: 112, fett: 22, kh: 188, ballaststoffe: 14 } },
+
+  // ---------- WEITERE ROTES-FLEISCH-GERICHTE (10) ----------
+  { id: 66, name: "Kartoffel-Lauch-Suppe mit Speck", category: "fleisch_rot", carb: "kartoffel", weight: "leicht", zeit: 30, tags: ["fleisch","glutenfrei"],
+    zutaten: [["Kartoffeln","700","g"],["Lauch","2","Stangen"],["Speckwürfel","100","g"],["Gemüsebrühe","1","l"],["Sahne","100","ml"]],
+    zubereitung: ["Speck auslassen, Lauch zugeben, kurz anschwitzen.","Kartoffeln würfeln, mit Brühe zugeben, 20 Min. köcheln.","Pürieren oder stückig lassen, Sahne einrühren, servieren."],
+    naehrwerte: { kcal: 1480, protein: 48, fett: 78, kh: 138, ballaststoffe: 14 } },
+  { id: 67, name: "Rindersteak mit Kartoffelwedges und Salat", category: "fleisch_rot", carb: "kartoffel", weight: "mittel", zeit: 40, tags: ["fleisch","glutenfrei"],
+    zutaten: [["Rinderhüftsteak","500","g"],["Kartoffeln","700","g"],["Olivenöl","2","EL"],["Gemischter Salat","250","g"],["Essig & Öl","2","EL"]],
+    zubereitung: ["Kartoffeln in Spalten schneiden, mit Öl im Ofen 25 Min. backen.","Steak scharf anbraten, ruhen lassen, in Streifen schneiden (Kinderportion gut durchgaren).","Mit Salat und Wedges servieren."],
+    naehrwerte: { kcal: 2080, protein: 142, fett: 88, kh: 138, ballaststoffe: 12 } },
+  { id: 68, name: "Krautwickel mit Hackfleisch und Kartoffeln", category: "fleisch_rot", carb: "kartoffel", weight: "schwer", zeit: 55, tags: ["fleisch"],
+    zutaten: [["Weißkohlblätter","8","Stück"],["Rinderhackfleisch","450","g"],["Reis (für Füllung)","100","g"],["Kartoffeln","700","g"],["Rinderbrühe","300","ml"]],
+    zubereitung: ["Kohlblätter kurz blanchieren.","Hack mit vorgekochtem Reis vermengen, würzen, in Blätter wickeln.","In Brühe 35 Min. schmoren.","Mit gekochten Kartoffeln servieren."],
+    naehrwerte: { kcal: 2080, protein: 118, fett: 88, kh: 178, ballaststoffe: 16 } },
+  { id: 69, name: "Rindfleisch-Pilz-Pfanne mit Spätzle", category: "fleisch_rot", carb: "vollkorn", weight: "schwer", zeit: 20, tags: ["fleisch"],
+    zutaten: [["Rinderstreifen","450","g"],["Champignons","300","g"],["Zwiebel","1","Stück"],["Sahne","200","ml"],["Spätzle","500","g"]],
+    zubereitung: ["Rind scharf anbraten, herausnehmen.","Zwiebel und Pilze anbraten, mit Sahne ablöschen.","Fleisch zurückgeben, kurz köcheln.","Mit Spätzle servieren."],
+    naehrwerte: { kcal: 2380, protein: 132, fett: 108, kh: 198, ballaststoffe: 10 } },
+  { id: 70, name: "Hackbraten mit Ofengemüse", category: "fleisch_rot", carb: "kartoffel", weight: "schwer", zeit: 65, tags: ["fleisch"],
+    zutaten: [["Rinder-/Schweinehack gemischt","600","g"],["Zwiebel","1","Stück"],["Ei","1","Stück"],["Semmelbrösel","60","g"],["Kartoffeln","600","g"],["Karotten","3","Stück"]],
+    zubereitung: ["Hack mit Zwiebel, Ei und Semmelbröseln vermengen, zu Braten formen.","Bei 180°C ca. 45 Min. im Ofen backen.","Kartoffeln und Karotten als Spalten mit im Ofen rösten.","Zusammen servieren."],
+    naehrwerte: { kcal: 2280, protein: 128, fett: 118, kh: 158, ballaststoffe: 16 } },
+  { id: 71, name: "Rinderhack-Gemüse-Curry mit Reis", category: "fleisch_rot", carb: "reis", weight: "mittel", zeit: 25, tags: ["fleisch","glutenfrei"],
+    zutaten: [["Rinderhackfleisch","450","g"],["Kokosmilch","300","ml"],["Currypulver","2","EL"],["Karotten","2","Stück"],["Erbsen (TK)","150","g"],["Reis","300","g"]],
+    zubereitung: ["Hack anbraten, Currypulver zugeben.","Kokosmilch und Karotten zugeben, 12 Min. köcheln.","Erbsen zugeben, kurz mitköcheln.","Mit Reis servieren."],
+    naehrwerte: { kcal: 2080, protein: 118, fett: 98, kh: 178, ballaststoffe: 14 } },
+  { id: 72, name: "Kartoffel-Gulasch mit Rindfleisch (Szegediner Art)", category: "fleisch_rot", carb: "kartoffel", weight: "schwer", zeit: 90, tags: ["fleisch","glutenfrei"],
+    zutaten: [["Rindergulasch","500","g"],["Kartoffeln","600","g"],["Sauerkraut","300","g"],["Zwiebel","1","Stück"],["Paprikapulver","1","EL"],["Rinderbrühe","400","ml"]],
+    zubereitung: ["Fleisch und Zwiebel anbraten, mit Paprikapulver würzen.","Brühe zugeben, 60 Min. schmoren.","Kartoffeln würfeln, mit Sauerkraut zugeben, weitere 20 Min. köcheln."],
+    naehrwerte: { kcal: 1980, protein: 128, fett: 78, kh: 148, ballaststoffe: 18 } },
+  { id: 73, name: "Gefüllte Zucchini mit Hackfleisch und Reis", category: "fleisch_rot", carb: "reis", weight: "mittel", zeit: 40, tags: ["fleisch"],
+    zutaten: [["Zucchini","4","Stück"],["Rinderhackfleisch","400","g"],["Reis","150","g"],["Zwiebel","1","Stück"],["Passierte Tomaten","400","g"],["Käse, gerieben","100","g"]],
+    zubereitung: ["Zucchini halbieren, aushöhlen.","Hack mit Zwiebel und vorgekochtem Reis vermengen, würzen, Zucchini füllen.","In Auflaufform mit Tomatensauce, Käse bestreuen, bei 190°C 25 Min. backen."],
+    naehrwerte: { kcal: 1880, protein: 112, fett: 68, kh: 168, ballaststoffe: 16 } },
+  { id: 74, name: "Rinderbäckchen-Ragout mit Kartoffelpüree", category: "fleisch_rot", carb: "kartoffel", weight: "schwer", zeit: 150, tags: ["fleisch"],
+    zutaten: [["Rinderbäckchen","700","g"],["Karotten","2","Stück"],["Zwiebel","1","Stück"],["Rotwein (optional, verkocht)","150","ml"],["Rinderbrühe","400","ml"],["Kartoffeln","800","g"]],
+    zubereitung: ["Fleisch scharf anbraten, Gemüse zugeben.","Mit Wein und Brühe ablöschen, 2,5 Std. bei niedriger Hitze schmoren bis zart.","Kartoffeln kochen, zu Püree stampfen.","Zusammen servieren."],
+    naehrwerte: { kcal: 2480, protein: 168, fett: 108, kh: 158, ballaststoffe: 14 } },
+  { id: 75, name: "Hackfleisch-Pfanne mit Reis und Gemüse (Schnelle Küche)", category: "fleisch_rot", carb: "reis", weight: "leicht", zeit: 20, tags: ["fleisch","kinderfreundlich","glutenfrei"],
+    zutaten: [["Rinderhackfleisch","450","g"],["Reis","300","g"],["Paprika","1","Stück"],["Karotten","2","Stück"],["Sojasauce","2","EL"]],
+    zubereitung: ["Hack krümelig anbraten.","Gemüse klein würfeln, zugeben, 8 Min. mitbraten.","Mit Sojasauce abschmecken.","Mit Reis servieren."],
+    naehrwerte: { kcal: 1880, protein: 118, fett: 68, kh: 188, ballaststoffe: 14 } },
+
+  // ---------- WEITERE VEGANE GERICHTE (10) ----------
+  { id: 76, name: "Veganes Chili sin Carne mit Reis", category: "vegan", carb: "reis", weight: "mittel", zeit: 35, tags: ["vegan","vegetarisch","hülsenfrüchte","glutenfrei"],
+    zutaten: [["Kidneybohnen, Dose","2","Dosen"],["Mais, Dose","1","Dose"],["Passierte Tomaten","400","g"],["Paprika","1","Stück"],["Zwiebel","1","Stück"],["Reis","300","g"]],
+    zubereitung: ["Zwiebel und Paprika anbraten.","Tomaten, Bohnen und Mais zugeben, mild würzen, 20 Min. köcheln.","Mit Reis servieren."],
+    naehrwerte: { kcal: 1880, protein: 68, fett: 28, kh: 318, ballaststoffe: 38 } },
+  { id: 77, name: "Gemüse-Pad-Thai mit Tofu", category: "vegan", carb: "sonstige", weight: "mittel", zeit: 15, tags: ["vegan","vegetarisch"],
+    zutaten: [["Reisnudeln","300","g"],["Tofu, fest","350","g"],["Karotten","2","Stück"],["Sojasprossen","150","g"],["Erdnüsse, gehackt","30","g"],["Sojasauce & Limette","3","EL"]],
+    zubereitung: ["Reisnudeln einlegen.","Tofu würfeln, knusprig anbraten.","Gemüse zugeben, kurz braten, Nudeln unterheben.","Mit Sojasauce, Limette und Erdnüssen abschmecken."],
+    naehrwerte: { kcal: 1880, protein: 68, fett: 58, kh: 248, ballaststoffe: 16 } },
+  { id: 78, name: "Veganer Linseneintopf mit Gemüse", category: "vegan", carb: "sonstige", weight: "leicht", zeit: 35, tags: ["vegan","vegetarisch","hülsenfrüchte","glutenfrei"],
+    zutaten: [["Braune Linsen","250","g"],["Kartoffeln","300","g"],["Karotten","3","Stück"],["Sellerie","100","g"],["Gemüsebrühe","1","l"]],
+    zubereitung: ["Linsen abspülen, mit Brühe aufsetzen.","Gemüse würfeln, zugeben, 25 Min. köcheln bis weich.","Abschmecken, servieren."],
+    naehrwerte: { kcal: 1380, protein: 68, fett: 8, kh: 218, ballaststoffe: 42 } },
+  { id: 79, name: "Falafel mit Hummus und Fladenbrot", category: "vegan", carb: "sonstige", weight: "mittel", zeit: 15, tags: ["vegan","vegetarisch","hülsenfrüchte"],
+    zutaten: [["Falafel (Kichererbsen)","20","Stück"],["Hummus","200","g"],["Fladenbrot","4","Stück"],["Salatblätter und Tomaten","1","Portion"]],
+    zubereitung: ["Falafel im Ofen oder in der Pfanne erwärmen.","Fladenbrot kurz aufwärmen.","Mit Hummus, Salat und Falafel füllen."],
+    naehrwerte: { kcal: 1880, protein: 68, fett: 68, kh: 238, ballaststoffe: 28 } },
+  { id: 80, name: "Veganes Gemüse-Risotto mit Pilzen", category: "vegan", carb: "reis", weight: "mittel", zeit: 35, tags: ["vegan","vegetarisch","glutenfrei"],
+    zutaten: [["Risottoreis","300","g"],["Champignons","250","g"],["Zwiebel","1","Stück"],["Gemüsebrühe","800","ml"],["Hefeflocken (statt Parmesan)","20","g"],["Olivenöl","2","EL"]],
+    zubereitung: ["Zwiebel und Pilze in Öl anbraten.","Reis zugeben, glasig anschwitzen.","Nach und nach heiße Brühe angießen, 18 Min. köcheln, rühren.","Mit Hefeflocken vollenden."],
+    naehrwerte: { kcal: 1680, protein: 38, fett: 38, kh: 278, ballaststoffe: 12 } },
+  { id: 81, name: "Bunte Buddha-Bowl mit Kichererbsen und Tahin-Dressing", category: "vegan", carb: "vollkorn", weight: "leicht", zeit: 30, tags: ["vegan","vegetarisch","glutenfrei"],
+    zutaten: [["Quinoa","250","g"],["Kichererbsen, Dose","1","Dose"],["Süßkartoffeln","300","g"],["Gurke und Karotte","2","Portionen"],["Tahin","2","EL"]],
+    zubereitung: ["Quinoa kochen.","Süßkartoffeln würfeln, im Ofen 20 Min. backen.","Kichererbsen abtropfen, Gemüse klein schneiden.","Alles in Schalen anrichten, Tahin-Dressing darüber."],
+    naehrwerte: { kcal: 1680, protein: 58, fett: 48, kh: 248, ballaststoffe: 32 } },
+  { id: 82, name: "Veganes Gulasch mit Sojaschnetzel und Kartoffeln", category: "vegan", carb: "kartoffel", weight: "mittel", zeit: 35, tags: ["vegan","vegetarisch"],
+    zutaten: [["Sojaschnetzel (getrocknet)","150","g"],["Zwiebeln","2","Stück"],["Paprika","2","Stück"],["Paprikapulver","2","EL"],["Gemüsebrühe","500","ml"],["Kartoffeln","800","g"]],
+    zubereitung: ["Sojaschnetzel in Brühe einweichen, abtropfen.","Zwiebeln und Paprika anbraten, Sojaschnetzel zugeben.","Mit Paprikapulver und Brühe 20 Min. köcheln.","Mit Kartoffeln servieren."],
+    naehrwerte: { kcal: 1580, protein: 88, fett: 28, kh: 218, ballaststoffe: 24 } },
+  { id: 83, name: "Veganer Gemüseauflauf mit Kartoffeln und Cashewsauce", category: "vegan", carb: "kartoffel", weight: "mittel", zeit: 40, tags: ["vegan","vegetarisch","glutenfrei"],
+    zutaten: [["Kartoffeln","700","g"],["Brokkoli","300","g"],["Karotten","2","Stück"],["Cashewkerne (für Sauce)","100","g"],["Gemüsebrühe","200","ml"]],
+    zubereitung: ["Kartoffeln in Scheiben vorkochen.","Cashews mit Brühe fein pürieren zu cremiger Sauce.","Kartoffeln, Brokkoli und Karotten in Auflaufform schichten, Sauce darüber.","Bei 190°C 25 Min. backen."],
+    naehrwerte: { kcal: 1680, protein: 48, fett: 68, kh: 198, ballaststoffe: 22 } },
+  { id: 84, name: "Veganes Curry mit grünen Bohnen und Tofu", category: "vegan", carb: "reis", weight: "mittel", zeit: 25, tags: ["vegan","vegetarisch","glutenfrei"],
+    zutaten: [["Tofu, fest","350","g"],["Grüne Bohnen","300","g"],["Kokosmilch","400","ml"],["Currypaste","2","EL"],["Reis","300","g"]],
+    zubereitung: ["Tofu würfeln, anbraten, herausnehmen.","Currypaste anrösten, Kokosmilch zugeben.","Bohnen zugeben, 10 Min. köcheln, Tofu zurückgeben.","Mit Reis servieren."],
+    naehrwerte: { kcal: 1780, protein: 68, fett: 78, kh: 178, ballaststoffe: 18 } },
+  { id: 85, name: "Veganer Shepherd's Pie mit Linsen und Kartoffelhaube", category: "vegan", carb: "kartoffel", weight: "schwer", zeit: 50, tags: ["vegan","vegetarisch","hülsenfrüchte"],
+    zutaten: [["Braune Linsen","250","g"],["Karotten","2","Stück"],["Zwiebel","1","Stück"],["Gemüsebrühe","400","ml"],["Kartoffeln","800","g"],["Pflanzenmilch","100","ml"]],
+    zubereitung: ["Linsen mit Gemüse und Brühe 20 Min. köcheln, in Auflaufform geben.","Kartoffeln kochen, mit Pflanzenmilch zu Püree stampfen.","Püree als Haube darüber verteilen.","Bei 200°C 20 Min. überbacken."],
+    naehrwerte: { kcal: 1680, protein: 68, fett: 18, kh: 278, ballaststoffe: 42 } },
+
+  // ---------- WEITERE VEGETARISCHE GERICHTE (10) ----------
+  { id: 86, name: "Käse-Lauch-Suppe mit Brot", category: "vegetarisch", carb: "sonstige", weight: "leicht", zeit: 25, tags: ["vegetarisch","kinderfreundlich"],
+    zutaten: [["Lauch","3","Stangen"],["Kartoffeln","300","g"],["Käse, gerieben","150","g"],["Gemüsebrühe","800","ml"],["Sahne","100","ml"],["Vollkornbrot","6","Scheiben"]],
+    zubereitung: ["Lauch und Kartoffeln klein schneiden, in Brühe 15 Min. köcheln.","Käse und Sahne einrühren, schmelzen lassen.","Pürieren oder stückig lassen.","Mit Brot servieren."],
+    naehrwerte: { kcal: 1680, protein: 68, fett: 78, kh: 158, ballaststoffe: 16 } },
+  { id: 87, name: "Spinat-Ricotta-Cannelloni", category: "vegetarisch", carb: "nudeln", weight: "mittel", zeit: 45, tags: ["vegetarisch"],
+    zutaten: [["Cannelloni-Nudeln","250","g"],["Blattspinat (TK)","400","g"],["Ricotta","250","g"],["Passierte Tomaten","400","g"],["Käse, gerieben","100","g"]],
+    zubereitung: ["Spinat auftauen, ausdrücken, mit Ricotta vermengen, würzen.","Nudeln damit füllen, in Auflaufform mit Tomatensauce legen.","Mit Käse bestreuen, bei 190°C 30 Min. backen."],
+    naehrwerte: { kcal: 1980, protein: 88, fett: 78, kh: 218, ballaststoffe: 14 } },
+  { id: 88, name: "Gemüse-Frühlingsrollen mit Reis", category: "vegetarisch", carb: "reis", weight: "leicht", zeit: 15, tags: ["vegetarisch"],
+    zutaten: [["Frühlingsrollen (Gemüse, TK)","12","Stück"],["Reis","300","g"],["Karotten und Gurke (Salat)","2","Portionen"],["Sojasauce","2","EL"]],
+    zubereitung: ["Frühlingsrollen nach Packungsangabe im Ofen backen.","Reis kochen.","Gemüse als Salat anrichten.","Zusammen mit Sojasauce servieren."],
+    naehrwerte: { kcal: 1780, protein: 38, fett: 58, kh: 268, ballaststoffe: 14 } },
+  { id: 89, name: "Ofengemüse mit Halloumi und Couscous", category: "vegetarisch", carb: "vollkorn", weight: "leicht", zeit: 30, tags: ["vegetarisch"],
+    zutaten: [["Halloumi","300","g"],["Zucchini","1","Stück"],["Paprika","2","Stück"],["Couscous (Vollkorn)","300","g"],["Olivenöl","3","EL"]],
+    zubereitung: ["Gemüse würfeln, mit Öl im Ofen 20 Min. rösten.","Halloumi in Scheiben braten.","Couscous mit Brühe aufgießen, ziehen lassen.","Alles zusammen anrichten."],
+    naehrwerte: { kcal: 1980, protein: 78, fett: 98, kh: 178, ballaststoffe: 16 } },
+  { id: 90, name: "Eier-Curry mit Reis", category: "vegetarisch", carb: "reis", weight: "mittel", zeit: 25, tags: ["vegetarisch","glutenfrei"],
+    zutaten: [["Eier","8","Stück"],["Kokosmilch","300","ml"],["Currypaste (mild)","2","EL"],["Tomaten","2","Stück"],["Reis","300","g"]],
+    zubereitung: ["Eier hartkochen, schälen.","Currypaste anrösten, Kokosmilch und Tomaten zugeben, 10 Min. köcheln.","Eier halbieren, in die Sauce geben, kurz erwärmen.","Mit Reis servieren."],
+    naehrwerte: { kcal: 1780, protein: 78, fett: 98, kh: 148, ballaststoffe: 10 } },
+  { id: 91, name: "Kartoffel-Käse-Taschen mit Salat", category: "vegetarisch", carb: "kartoffel", weight: "mittel", zeit: 35, tags: ["vegetarisch","kinderfreundlich"],
+    zutaten: [["Kartoffeln","600","g"],["Käse, gerieben","150","g"],["Blätterteig","2","Rollen"],["Ei (zum Bestreichen)","1","Stück"],["Gemischter Salat","250","g"]],
+    zubereitung: ["Kartoffeln kochen, würfeln, mit Käse vermengen.","Blätterteig in Quadrate schneiden, füllen, zu Taschen falten.","Mit Ei bestreichen, bei 200°C 20 Min. backen.","Mit Salat servieren."],
+    naehrwerte: { kcal: 2080, protein: 68, fett: 118, kh: 198, ballaststoffe: 12 } },
+  { id: 92, name: "Gemüse-Eierpfanne mit Brot (Shakshuka-Art, mild)", category: "vegetarisch", carb: "sonstige", weight: "leicht", zeit: 20, tags: ["vegetarisch","glutenfrei"],
+    zutaten: [["Eier","8","Stück"],["Passierte Tomaten","400","g"],["Paprika","2","Stück"],["Zwiebel","1","Stück"],["Vollkornbrot","6","Scheiben"]],
+    zubereitung: ["Zwiebel und Paprika anbraten, Tomaten zugeben, 10 Min. köcheln.","Mulden formen, Eier hineingeben, stocken lassen.","Mit Brot servieren."],
+    naehrwerte: { kcal: 1480, protein: 68, fett: 58, kh: 148, ballaststoffe: 16 } },
+  { id: 93, name: "Pilzrahm-Tagliatelle", category: "vegetarisch", carb: "nudeln", weight: "mittel", zeit: 25, tags: ["vegetarisch"],
+    zutaten: [["Tagliatelle","400","g"],["Champignons","400","g"],["Zwiebel","1","Stück"],["Sahne","250","ml"],["Parmesan","40","g"]],
+    zubereitung: ["Zwiebel und Pilze in Butter anbraten.","Mit Sahne ablöschen, 8 Min. köcheln.","Nudeln kochen, mit der Sauce vermengen, Parmesan darüber."],
+    naehrwerte: { kcal: 2280, protein: 68, fett: 118, kh: 238, ballaststoffe: 12 } },
+  { id: 94, name: "Gebackene Süßkartoffel mit Bohnen-Mais-Füllung", category: "vegetarisch", carb: "sonstige", weight: "leicht", zeit: 55, tags: ["vegetarisch","glutenfrei","hülsenfrüchte"],
+    zutaten: [["Süßkartoffeln","4","Stück (groß)"],["Kidneybohnen, Dose","1","Dose"],["Mais, Dose","1","Dose"],["Käse, gerieben","100","g"],["Joghurt","100","g"]],
+    zubereitung: ["Süßkartoffeln waschen, im Ofen 45 Min. bei 200°C backen.","Bohnen und Mais erwärmen, würzen.","Kartoffeln aufschneiden, mit Füllung, Käse und Joghurt servieren."],
+    naehrwerte: { kcal: 1780, protein: 58, fett: 38, kh: 298, ballaststoffe: 38 } },
+  { id: 95, name: "Gemüse-Bulgur-Pfanne mit Feta", category: "vegetarisch", carb: "vollkorn", weight: "leicht", zeit: 15, tags: ["vegetarisch"],
+    zutaten: [["Bulgur","250","g"],["Zucchini","1","Stück"],["Paprika","1","Stück"],["Feta","200","g"],["Olivenöl","2","EL"]],
+    zubereitung: ["Bulgur nach Packungsangabe garen.","Gemüse würfeln, in Öl anbraten.","Bulgur unterheben, Feta zerbröckelt darüber geben.","Servieren."],
+    naehrwerte: { kcal: 1680, protein: 58, fett: 68, kh: 198, ballaststoffe: 22 } },
+];
+
+const TAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+
+const KATEGORIE_INFO = {
+  fisch: { label: "Fisch", icon: Fish, color: "#2D6CA3" },
+  fleisch_gefluegel: { label: "Geflügel", icon: Drumstick, color: "#C4882D" },
+  fleisch_rot: { label: "Rotes Fleisch", icon: Beef, color: "#A33B3B" },
+  vegetarisch: { label: "Vegetarisch", icon: Leaf, color: "#4C8C4A" },
+  vegan: { label: "Vegan", icon: Leaf, color: "#2D8659" },
+};
+
+const EMPFEHLUNG = {
+  // grobe Wochen-Richtwerte für eine ausgewogene Familienernährung (7 Hauptmahlzeiten)
+  fisch_min: 2,
+  fleisch_rot_max: 2,
+  vegetarisch_vegan_min: 2,
+  kartoffel_max_anteil: 0.5, // max Anteil EINER Kohlenhydratquelle
+};
+
+// Haushalt: 2 Erwachsene (je 1,0) + 2 kleine Kinder (je ca. 0,55 einer Erwachsenenportion)
+// → 3,1 "Erwachseneneinheiten". Die gespeicherten Nährwerte sind Gesamtwerte für den
+// ganzen Topf; für die Anzeige "pro Portion" rechnen wir auf eine Erwachsenenportion um.
+const ERWACHSENENEINHEITEN_HAUSHALT = 3.1;
+
+function proPortion(naehrwerte) {
+  const f = ERWACHSENENEINHEITEN_HAUSHALT;
+  return {
+    kcal: naehrwerte.kcal / f,
+    protein: naehrwerte.protein / f,
+    fett: naehrwerte.fett / f,
+    kh: naehrwerte.kh / f,
+    ballaststoffe: naehrwerte.ballaststoffe / f,
+  };
+}
+
+const HIGH_PROTEIN_SCHWELLE = 35; // g Eiweiß pro Erwachsenenportion
+const SCHNELL_SCHWELLE = 25; // Minuten Gesamtzubereitungszeit
+
+// Zusätzliche, kombinierbare Eigenschaftsfilter (unabhängig vom Kategorie-Filter)
+const EIGENSCHAFTS_FILTER = [
+  { key: "high_protein", label: "High Protein", test: (r) => proPortion(r.naehrwerte).protein >= HIGH_PROTEIN_SCHWELLE },
+  { key: "schnell", label: "Schnell (≤ 25 Min.)", test: (r) => r.zeit <= SCHNELL_SCHWELLE },
+  { key: "kinderfreundlich", label: "Kinderfreundlich", test: (r) => r.tags.includes("kinderfreundlich") },
+  { key: "glutenfrei", label: "Glutenfrei", test: (r) => r.tags.includes("glutenfrei") },
+  { key: "hülsenfrüchte", label: "Mit Hülsenfrüchten", test: (r) => r.tags.includes("hülsenfrüchte") },
+];
+
+function parseDE(num) {
+  return typeof num === "string" ? parseFloat(num.replace(",", ".")) : num;
+}
+
+function formatMenge(menge) {
+  const n = parseDE(menge);
+  if (Number.isInteger(n)) return n.toString();
+  return n.toString().replace(".", ",");
+}
+
+function rund(n, decimals = 0) {
+  return n.toFixed(decimals);
+}
+
+/* ============================================================
+   NÄHRWERT- & AMPEL-LOGIK
+   ============================================================ */
+function berechneWochenNaehrwerte(planRecipes) {
+  return planRecipes.reduce(
+    (acc, r) => {
+      if (!r) return acc;
+      acc.kcal += r.naehrwerte.kcal;
+      acc.protein += r.naehrwerte.protein;
+      acc.fett += r.naehrwerte.fett;
+      acc.kh += r.naehrwerte.kh;
+      acc.ballaststoffe += r.naehrwerte.ballaststoffe;
+      return acc;
+    },
+    { kcal: 0, protein: 0, fett: 0, kh: 0, ballaststoffe: 0 }
+  );
+}
+
+function berechneAmpel(planRecipes) {
+  const gefuellt = planRecipes.filter(Boolean);
+  const anzahl = gefuellt.length;
+  if (anzahl === 0) {
+    return { status: "leer", score: 0, hinweise: [], anzahl: 0 };
+  }
+
+  const hinweise = [];
+  let punkte = 0;
+  const maxPunkte = 6;
+
+  // 1. Fisch-Anteil
+  const fischAnzahl = gefuellt.filter((r) => r.category === "fisch").length;
+  if (fischAnzahl >= EMPFEHLUNG.fisch_min) {
+    punkte += 1;
+  } else if (anzahl >= 5) {
+    hinweise.push({ typ: "warnung", text: `Nur ${fischAnzahl}× Fisch diese Woche — empfohlen sind mindestens 2 Fischgerichte.` });
+  }
+
+  // 2. Rotes Fleisch nicht zu oft
+  const rotAnzahl = gefuellt.filter((r) => r.category === "fleisch_rot").length;
+  if (rotAnzahl <= EMPFEHLUNG.fleisch_rot_max) {
+    punkte += 1;
+  } else {
+    hinweise.push({ typ: "warnung", text: `${rotAnzahl}× rotes Fleisch diese Woche — mehr als 2× wird ernährungsphysiologisch nicht empfohlen.` });
+  }
+
+  // 3. Vegetarisch/vegan-Anteil
+  const vegAnzahl = gefuellt.filter((r) => r.category === "vegetarisch" || r.category === "vegan").length;
+  if (vegAnzahl >= EMPFEHLUNG.vegetarisch_vegan_min) {
+    punkte += 1;
+  } else if (anzahl >= 5) {
+    hinweise.push({ typ: "warnung", text: `Nur ${vegAnzahl}× vegetarisch/vegan — für mehr Ballaststoffe und Abwechslung 2–3× pro Woche einplanen.` });
+  }
+
+  // 4. Kohlenhydrat-Vielfalt (keine Dominanz einer Quelle)
+  const carbCounts = {};
+  gefuellt.forEach((r) => { carbCounts[r.carb] = (carbCounts[r.carb] || 0) + 1; });
+  const maxCarbAnteil = Math.max(...Object.values(carbCounts)) / anzahl;
+  if (maxCarbAnteil <= EMPFEHLUNG.kartoffel_max_anteil) {
+    punkte += 1;
+  } else {
+    const dominant = Object.entries(carbCounts).sort((a, b) => b[1] - a[1])[0][0];
+    hinweise.push({ typ: "warnung", text: `Die Kohlenhydratquelle "${dominant}" dominiert die Woche — etwas mehr Abwechslung (Reis, Vollkorn, Hülsenfrüchte) tut gut.` });
+  }
+
+  // 5. Ballaststoffe pro Tag (Durchschnitt) — Richtwert Familie ca. 70-90g/Tag gesamt
+  const naehrwerte = berechneWochenNaehrwerte(gefuellt);
+  const ballaststoffeProTag = naehrwerte.ballaststoffe / anzahl;
+  if (ballaststoffeProTag >= 20) {
+    punkte += 1;
+  } else {
+    hinweise.push({ typ: "info", text: `Ballaststoffe im Schnitt ${ballaststoffeProTag.toFixed(0)} g/Tag — mehr Hülsenfrüchte, Vollkorn oder Gemüse erhöhen das.` });
+  }
+
+  // 6. Schwere Gerichte nicht zu häufig
+  const schwerAnzahl = gefuellt.filter((r) => r.weight === "schwer").length;
+  if (schwerAnzahl <= 2) {
+    punkte += 1;
+  } else {
+    hinweise.push({ typ: "warnung", text: `${schwerAnzahl} besonders reichhaltige Gerichte (viel Sahne/Käse/Fett) — für die Balance lieber auf max. 2 pro Woche begrenzen.` });
+  }
+
+  let status = "rot";
+  if (punkte >= 5) status = "gruen";
+  else if (punkte >= 3) status = "gelb";
+
+  if (hinweise.length === 0) {
+    hinweise.push({ typ: "lob", text: "Diese Wochenauswahl ist rundum ausgewogen — guter Mix aus Protein­quellen, Kohlenhydraten und Gemüse." });
+  }
+
+  return { status, score: punkte, maxScore: maxPunkte, hinweise, anzahl };
+}
+
+function aggregiereEinkaufsliste(planRecipes) {
+  const gefuellt = planRecipes.filter(Boolean);
+  const map = new Map();
+  gefuellt.forEach((r) => {
+    r.zutaten.forEach(([name, menge, einheit]) => {
+      const key = `${name}__${einheit}`;
+      const n = parseDE(menge);
+      if (map.has(key)) {
+        const cur = map.get(key);
+        if (!isNaN(n) && !isNaN(cur.menge)) {
+          cur.menge += n;
+        } else {
+          cur.menge = cur.menge + " + " + menge;
+        }
+      } else {
+        map.set(key, { name, menge: isNaN(n) ? menge : n, einheit });
+      }
+    });
+  });
+  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, "de"));
+}
+
+/* ============================================================
+   UI-KOMPONENTEN
+   ============================================================ */
+
+function AmpelBadge({ status, size = "md" }) {
+  const colors = {
+    gruen: { bg: "#E3EFE1", fg: "#2D5A3D", dot: "#3F7D44" },
+    gelb: { bg: "#FAF1DD", fg: "#8A6315", dot: "#D9A62E" },
+    rot: { bg: "#F6E6E2", fg: "#8C3A2A", dot: "#C24B3F" },
+    leer: { bg: "#F0EDE5", fg: "#8A8270", dot: "#C7BFA9" },
+  };
+  const c = colors[status];
+  const label = { gruen: "Ausgewogen", gelb: "Geht so", rot: "Unausgewogen", leer: "Noch leer" }[status];
+  const px = size === "sm" ? "6px 10px" : "8px 14px";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 7, background: c.bg, color: c.fg, padding: px, borderRadius: 999, fontWeight: 600, fontSize: size === "sm" ? 12.5 : 14, fontFamily: "'Inter', sans-serif" }}>
+      <span style={{ width: 9, height: 9, borderRadius: "50%", background: c.dot, display: "inline-block" }} />
+      {label}
+    </span>
+  );
+}
+
+function NaehrwertBalken({ label, value, unit, max, color }) {
+  const pct = Math.min(100, (value / max) * 100);
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5C5444", marginBottom: 4, fontFamily: "'Inter', sans-serif" }}>
+        <span>{label}</span>
+        <span style={{ fontWeight: 600, color: "#2B2622" }}>{value.toFixed(0)} {unit}</span>
+      </div>
+      <div style={{ height: 7, background: "#EFE9DC", borderRadius: 4, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 4, transition: "width 0.4s ease" }} />
+      </div>
+    </div>
+  );
+}
+
+function RecipeCard({ recipe, onSelect, isSelected }) {
+  const info = KATEGORIE_INFO[recipe.category];
+  const Icon = info.icon;
+  const proPort = proPortion(recipe.naehrwerte);
+  return (
+    <button
+      onClick={() => onSelect(recipe)}
+      style={{
+        textAlign: "left",
+        border: isSelected ? `2px solid ${info.color}` : "1px solid #E4DDCB",
+        background: isSelected ? `${info.color}14` : "#FFFFFF",
+        borderRadius: 14,
+        padding: "14px 16px",
+        cursor: "pointer",
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        fontFamily: "'Inter', sans-serif",
+        transition: "all 0.15s ease",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ width: 26, height: 26, borderRadius: 8, background: `${info.color}1F`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Icon size={14} color={info.color} />
+        </span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: info.color, textTransform: "uppercase", letterSpacing: "0.04em" }}>{info.label}</span>
+      </div>
+      <div style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 16.5, color: "#2B2622", lineHeight: 1.3, fontWeight: 600 }}>
+        {recipe.name}
+      </div>
+      <div style={{ fontSize: 12.5, color: "#8A8270", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span>{rund(proPort.kcal)} kcal/Portion</span>
+        <span>·</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><Clock size={11} /> {recipe.zeit} Min.</span>
+        {proPort.protein >= HIGH_PROTEIN_SCHWELLE && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "#2D6CA3", fontWeight: 700 }}><Zap size={11} /> High Protein</span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function RecipeDetailModal({ recipe, onClose }) {
+  if (!recipe) return null;
+  const info = KATEGORIE_INFO[recipe.category];
+  const proPort = proPortion(recipe.naehrwerte);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(43,38,34,0.5)", zIndex: 50, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#FBF8F1", width: "100%", maxWidth: 640, maxHeight: "88vh", overflowY: "auto", borderRadius: "20px 20px 0 0", padding: "24px 22px 36px", fontFamily: "'Inter', sans-serif" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: info.color, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
+              <span>{info.label} · {recipe.weight}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "#8A8270" }}><Clock size={12} /> {recipe.zeit} Min.</span>
+            </div>
+            <h2 style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 24, color: "#2B2622", margin: 0, lineHeight: 1.2 }}>{recipe.name}</h2>
+          </div>
+          <button onClick={onClose} style={{ background: "#EFE9DC", border: "none", borderRadius: 10, padding: 8, cursor: "pointer", flexShrink: 0, marginLeft: 12 }}>
+            <X size={18} color="#5C5444" />
+          </button>
+        </div>
+
+        <div style={{ fontSize: 12, fontWeight: 600, color: "#5C5444", margin: "16px 0 8px" }}>Nährwerte pro Portion (Erwachsener)</div>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", margin: "0 0 0", padding: "14px 16px", background: "#FFFFFF", borderRadius: 12, border: "1px solid #E4DDCB" }}>
+          {[
+            ["Energie", rund(proPort.kcal), "kcal"],
+            ["Eiweiß", rund(proPort.protein), "g"],
+            ["Fett", rund(proPort.fett), "g"],
+            ["Kohlenh.", rund(proPort.kh), "g"],
+            ["Ballaststoffe", rund(proPort.ballaststoffe), "g"],
+          ].map(([label, val, unit]) => (
+            <div key={label} style={{ minWidth: 70 }}>
+              <div style={{ fontSize: 11, color: "#8A8270", marginBottom: 2 }}>{label}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#2B2622" }}>{val}<span style={{ fontSize: 11, fontWeight: 500, color: "#8A8270" }}> {unit}</span></div>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 11.5, color: "#8A8270", marginTop: 8, marginBottom: 18 }}>Bezogen auf eine Erwachsenenportion. Kinderportionen entsprechend kleiner (ca. 55 % einer Erwachsenenportion). Zutaten unten sind für den ganzen Haushalt — 2 Erwachsene + 2 kleine Kinder.</div>
+
+        <h3 style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 17, color: "#2B2622", marginBottom: 10 }}>Zutaten</h3>
+        <ul style={{ listStyle: "none", padding: 0, margin: "0 0 22px", display: "grid", gap: 6 }}>
+          {recipe.zutaten.map(([name, menge, einheit], i) => (
+            <li key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 14.5, color: "#3B362F", borderBottom: "1px solid #EFE9DC", padding: "6px 0" }}>
+              <span>{name}</span>
+              <span style={{ color: "#8A8270", fontWeight: 600 }}>{formatMenge(menge)} {einheit}</span>
+            </li>
+          ))}
+        </ul>
+
+        <h3 style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 17, color: "#2B2622", marginBottom: 10 }}>Zubereitung</h3>
+        <ol style={{ padding: "0 0 0 20px", margin: 0, display: "grid", gap: 10 }}>
+          {recipe.zubereitung.map((step, i) => (
+            <li key={i} style={{ fontSize: 14.5, color: "#3B362F", lineHeight: 1.5 }}>{step}</li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   HAUPT-APP
+   ============================================================ */
+// Firestore-Pfad: Collection "mealplan", Dokument "current"
+// { plan: [id|null, ...7], updatedAt: serverTimestamp }
+const MEALPLAN_DOC = window.firebaseDb ? window.firebaseDb.collection("mealplan").doc("current") : null;
+
+function App() {
+  const [plan, setPlan] = useState(Array(7).fill(null));
+  const [pickerDay, setPickerDay] = useState(null); // index of day being edited, or null
+  const [detailRecipe, setDetailRecipe] = useState(null);
+  const [filterKategorie, setFilterKategorie] = useState("alle");
+  const [aktiveEigenschaften, setAktiveEigenschaften] = useState([]);
+  const [view, setView] = useState("plan"); // plan | einkauf
+  const [showAmpelInfo, setShowAmpelInfo] = useState(false);
+
+  const [ladeStatus, setLadeStatus] = useState("laedt"); // laedt | bereit | fehler
+  const [syncStatus, setSyncStatus] = useState("synchron"); // synchron | speichert | fehler
+  const hatGeladen = useRef(false);
+  const schreibtGerade = useRef(false); // verhindert, dass der eigene Schreibvorgang den lokalen State überschreibt
+
+  // RECIPES-Lookup nach ID, für das Wiederherstellen aus Firestore
+  const recipesById = useMemo(() => {
+    const map = new Map();
+    RECIPES.forEach((r) => map.set(r.id, r));
+    return map;
+  }, []);
+
+  function planAusIds(ids) {
+    if (!Array.isArray(ids)) return Array(7).fill(null);
+    const wiederhergestellt = ids.map((id) => (id == null ? null : recipesById.get(id) || null));
+    return wiederhergestellt.length === 7 ? wiederhergestellt : Array(7).fill(null);
+  }
+
+  // Echtzeit-Listener: reagiert automatisch, wenn sich der Plan irgendwo ändert
+  // (eigenes Gerät ODER das der Frau) — kein manuelles "Aktualisieren" nötig.
+  useEffect(() => {
+    if (!MEALPLAN_DOC) {
+      setLadeStatus("fehler");
+      return;
+    }
+    const unsubscribe = MEALPLAN_DOC.onSnapshot(
+      (doc) => {
+        if (schreibtGerade.current) {
+          // Eigener Schreibvorgang löst diesen Snapshot aus — nicht erneut übernehmen,
+          // um Ruckler im UI durch den eigenen Roundtrip zu vermeiden.
+          schreibtGerade.current = false;
+        } else if (doc.exists) {
+          setPlan(planAusIds(doc.data().plan));
+        }
+        setLadeStatus("bereit");
+        hatGeladen.current = true;
+      },
+      (error) => {
+        console.error("Firestore-Fehler:", error);
+        setLadeStatus("fehler");
+      }
+    );
+    return () => unsubscribe();
+  }, [recipesById]);
+
+  // Bei jeder Änderung: Plan in Firestore sichern (nicht beim allerersten Laden)
+  useEffect(() => {
+    if (!hatGeladen.current || !MEALPLAN_DOC) return;
+    let abgebrochen = false;
+    async function speichern() {
+      setSyncStatus("speichert");
+      schreibtGerade.current = true;
+      try {
+        const ids = plan.map((r) => (r ? r.id : null));
+        await MEALPLAN_DOC.set({ plan: ids, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        if (abgebrochen) return;
+        setSyncStatus("synchron");
+      } catch (e) {
+        console.error("Speichern fehlgeschlagen:", e);
+        if (!abgebrochen) setSyncStatus("fehler");
+      }
+    }
+    speichern();
+    return () => { abgebrochen = true; };
+  }, [plan]);
+
+  const ampel = useMemo(() => berechneAmpel(plan), [plan]);
+  const wochenNaehrwerte = useMemo(() => berechneWochenNaehrwerte(plan.filter(Boolean)), [plan]);
+  const wochenProPortion = useMemo(() => proPortion(wochenNaehrwerte), [wochenNaehrwerte]);
+  const anzahlGeplant = plan.filter(Boolean).length;
+  const einkaufsliste = useMemo(() => aggregiereEinkaufsliste(plan), [plan]);
+
+  const gefilterteRezepte = useMemo(() => {
+    let liste = filterKategorie === "alle" ? RECIPES : RECIPES.filter((r) => r.category === filterKategorie);
+    if (aktiveEigenschaften.length > 0) {
+      const tests = EIGENSCHAFTS_FILTER.filter((f) => aktiveEigenschaften.includes(f.key)).map((f) => f.test);
+      liste = liste.filter((r) => tests.every((test) => test(r)));
+    }
+    return liste;
+  }, [filterKategorie, aktiveEigenschaften]);
+
+  function toggleEigenschaft(key) {
+    setAktiveEigenschaften((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  }
+
+  function waehleRezept(recipe) {
+    if (pickerDay === null) return;
+    const neu = [...plan];
+    neu[pickerDay] = recipe;
+    setPlan(neu);
+    setPickerDay(null);
+  }
+
+  function entferneTag(idx) {
+    const neu = [...plan];
+    neu[idx] = null;
+    setPlan(neu);
+  }
+
+  function alleZuruecksetzen() {
+    setPlan(Array(7).fill(null));
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#FAF6EF", fontFamily: "'Inter', sans-serif", paddingBottom: 60 }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+        * { box-sizing: border-box; }
+        body { margin: 0; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-thumb { background: #D9CFB8; border-radius: 4px; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @media print {
+          .no-print { display: none !important; }
+        }
+      `}</style>
+
+      {/* HEADER */}
+      <div style={{ background: "#2D5A3D", padding: "28px 20px 22px", color: "#FAF6EF", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", right: -30, top: -30, width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,0.06)" }} />
+        <div style={{ position: "absolute", right: 40, bottom: -50, width: 100, height: 100, borderRadius: "50%", background: "rgba(255,255,255,0.05)" }} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, position: "relative" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Soup size={22} />
+            <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.85 }}>Familien-Wochenplan</span>
+          </div>
+          {ladeStatus === "bereit" && (
+            <span className="no-print" style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, opacity: 0.85 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#7FD99A", display: "inline-block" }} />
+              Live
+            </span>
+          )}
+        </div>
+        <h1 style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 28, margin: "2px 0 6px", position: "relative" }}>Was essen wir diese Woche?</h1>
+        <p style={{ fontSize: 13.5, opacity: 0.85, margin: "0 0 10px", position: "relative", maxWidth: 420 }}>
+          95 ausgewogene Gerichte · Portionen für 2 Erwachsene + 2 Kinder · mit Rezept, Einkaufsliste und Nährwert-Check
+        </p>
+        <div className="no-print" style={{ display: "flex", alignItems: "center", gap: 6, position: "relative", fontSize: 12, opacity: 0.85 }}>
+          <Users size={13} />
+          <span>Geteilter Plan</span>
+          <span style={{ opacity: 0.6 }}>·</span>
+          {ladeStatus === "laedt" && <span>Verbinde …</span>}
+          {ladeStatus === "fehler" && <span>Keine Verbindung — bitte Internetverbindung prüfen</span>}
+          {ladeStatus === "bereit" && syncStatus === "speichert" && <span>Speichert …</span>}
+          {ladeStatus === "bereit" && syncStatus === "synchron" && <span style={{ display: "flex", alignItems: "center", gap: 3 }}><Check size={12} /> Aktuell</span>}
+          {ladeStatus === "bereit" && syncStatus === "fehler" && <span>Speichern fehlgeschlagen — bitte erneut versuchen</span>}
+        </div>
+      </div>
+
+      {/* TABS */}
+      <div className="no-print" style={{ display: "flex", gap: 8, padding: "16px 20px 0", maxWidth: 720, margin: "0 auto" }}>
+        {[
+          { key: "plan", label: "Wochenplan", icon: ChefHat },
+          { key: "einkauf", label: `Einkaufsliste${anzahlGeplant > 0 ? ` (${einkaufsliste.length})` : ""}`, icon: ShoppingCart },
+        ].map((t) => {
+          const Icon = t.icon;
+          const active = view === t.key;
+          return (
+            <button key={t.key} onClick={() => setView(t.key)} style={{
+              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+              padding: "11px 14px", borderRadius: 12, border: active ? "none" : "1px solid #E4DDCB",
+              background: active ? "#2D5A3D" : "#FFFFFF", color: active ? "#FAF6EF" : "#5C5444",
+              fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "'Inter', sans-serif",
+            }}>
+              <Icon size={16} /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ maxWidth: 720, margin: "0 auto", padding: "18px 20px" }}>
+
+        {view === "plan" && (
+          <>
+            {/* AMPEL-KARTE */}
+            <div style={{ background: "#FFFFFF", border: "1px solid #E4DDCB", borderRadius: 16, padding: "16px 18px", marginBottom: 18 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: "#5C5444" }}>Balance-Check der Woche</span>
+                <AmpelBadge status={ampel.status} />
+              </div>
+              {anzahlGeplant === 0 ? (
+                <p style={{ fontSize: 13.5, color: "#8A8270", margin: 0 }}>Wähle Gerichte für die Woche aus, um die Ausgewogenheit zu sehen.</p>
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+                    {Array.from({ length: ampel.maxScore }).map((_, i) => (
+                      <div key={i} style={{ flex: 1, height: 6, borderRadius: 3, background: i < ampel.score ? (ampel.status === "gruen" ? "#3F7D44" : ampel.status === "gelb" ? "#D9A62E" : "#C24B3F") : "#EFE9DC" }} />
+                    ))}
+                  </div>
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {ampel.hinweise.map((h, i) => (
+                      <div key={i} style={{ display: "flex", gap: 8, fontSize: 13, color: "#3B362F", lineHeight: 1.4 }}>
+                        <span style={{ flexShrink: 0 }}>{h.typ === "warnung" ? "⚠️" : h.typ === "lob" ? "✅" : "💡"}</span>
+                        <span>{h.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* TAGE-LISTE */}
+            <div style={{ display: "grid", gap: 10, marginBottom: 22 }}>
+              {TAGE.map((tag, idx) => {
+                const r = plan[idx];
+                const info = r ? KATEGORIE_INFO[r.category] : null;
+                return (
+                  <div key={tag} style={{ background: "#FFFFFF", border: "1px solid #E4DDCB", borderRadius: 14, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 68, flexShrink: 0 }}>
+                      <div style={{ fontSize: 11, color: "#8A8270", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.03em" }}>{tag.slice(0, 2)}</div>
+                      <div style={{ fontSize: 13, color: "#5C5444", fontWeight: 600 }}>{tag}</div>
+                    </div>
+                    {r ? (
+                      <>
+                        <div onClick={() => setDetailRecipe(r)} style={{ flex: 1, cursor: "pointer" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                            {info && <info.icon size={13} color={info.color} />}
+                            <span style={{ fontSize: 11.5, color: info?.color, fontWeight: 600 }}>{info?.label}</span>
+                          </div>
+                          <div style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 15.5, color: "#2B2622", lineHeight: 1.25 }}>{r.name}</div>
+                        </div>
+                        <button onClick={() => setPickerDay(idx)} style={{ background: "#F0EDE5", border: "none", borderRadius: 9, padding: "7px 10px", fontSize: 12.5, fontWeight: 600, color: "#5C5444", cursor: "pointer" }}>Ändern</button>
+                        <button onClick={() => entferneTag(idx)} style={{ background: "none", border: "none", padding: 6, cursor: "pointer" }}>
+                          <X size={16} color="#B0A890" />
+                        </button>
+                      </>
+                    ) : (
+                      <button onClick={() => setPickerDay(idx)} style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, background: "none", border: "1px dashed #D9CFB8", borderRadius: 10, padding: "9px 12px", color: "#8A8270", fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
+                        <Plus size={15} /> Gericht wählen
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {anzahlGeplant > 0 && (
+              <button onClick={alleZuruecksetzen} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#A33B3B", fontSize: 13, fontWeight: 600, cursor: "pointer", margin: "0 auto 24px", padding: 8 }}>
+                <Trash2 size={14} /> Wochenplan zurücksetzen
+              </button>
+            )}
+
+            {/* NÄHRWERTE DER WOCHE — PRO PORTION */}
+            {anzahlGeplant > 0 && (
+              <div style={{ background: "#FFFFFF", border: "1px solid #E4DDCB", borderRadius: 16, padding: "18px 18px 6px" }}>
+                <h3 style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 17, color: "#2B2622", margin: "0 0 4px" }}>Nährwerte pro Portion</h3>
+                <p style={{ fontSize: 12, color: "#8A8270", margin: "0 0 16px" }}>Ø pro Erwachsenenportion und Tag, gemittelt über {anzahlGeplant} geplante Gerichte</p>
+                <NaehrwertBalken label="Energie" value={wochenProPortion.kcal / anzahlGeplant} unit="kcal" max={2200} color="#C4622D" />
+                <NaehrwertBalken label="Eiweiß" value={wochenProPortion.protein / anzahlGeplant} unit="g" max={100} color="#2D6CA3" />
+                <NaehrwertBalken label="Fett" value={wochenProPortion.fett / anzahlGeplant} unit="g" max={90} color="#D9A62E" />
+                <NaehrwertBalken label="Kohlenhydrate" value={wochenProPortion.kh / anzahlGeplant} unit="g" max={280} color="#4C8C4A" />
+                <NaehrwertBalken label="Ballaststoffe" value={wochenProPortion.ballaststoffe / anzahlGeplant} unit="g" max={35} color="#2D5A3D" />
+                <div style={{ fontSize: 11.5, color: "#8A8270", margin: "12px 0 14px" }}>
+                  Richtwerte für eine erwachsene Person pro Hauptmahlzeit. Kinderportionen liegen bei ca. 55 % dieser Werte.
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {view === "einkauf" && (
+          <div>
+            <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <h2 style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 20, color: "#2B2622", margin: 0 }}>Einkaufsliste</h2>
+              {einkaufsliste.length > 0 && (
+                <button onClick={() => window.print()} style={{ display: "flex", alignItems: "center", gap: 6, background: "#F0EDE5", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, color: "#5C5444", cursor: "pointer" }}>
+                  <Printer size={14} /> Drucken
+                </button>
+              )}
+            </div>
+            {einkaufsliste.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "50px 20px", color: "#8A8270" }}>
+                <ShoppingCart size={32} style={{ marginBottom: 10, opacity: 0.5 }} />
+                <p style={{ fontSize: 14 }}>Noch keine Gerichte geplant. Wähle Gerichte im Wochenplan, dann erscheint hier automatisch die Einkaufsliste.</p>
+              </div>
+            ) : (
+              <div style={{ background: "#FFFFFF", border: "1px solid #E4DDCB", borderRadius: 16, padding: "6px 18px" }}>
+                {einkaufsliste.map((item, i) => (
+                  <label key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: i < einkaufsliste.length - 1 ? "1px solid #EFE9DC" : "none", cursor: "pointer" }}>
+                    <input type="checkbox" style={{ width: 17, height: 17, accentColor: "#2D5A3D" }} />
+                    <span style={{ flex: 1, fontSize: 14.5, color: "#3B362F" }}>{item.name}</span>
+                    <span style={{ fontSize: 13.5, fontWeight: 600, color: "#8A8270" }}>
+                      {typeof item.menge === "number" ? formatMenge(item.menge) : item.menge} {item.einheit}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* PICKER MODAL */}
+      {pickerDay !== null && (
+        <div onClick={() => setPickerDay(null)} style={{ position: "fixed", inset: 0, background: "rgba(43,38,34,0.5)", zIndex: 40, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#FAF6EF", width: "100%", maxWidth: 640, maxHeight: "85vh", display: "flex", flexDirection: "column", borderRadius: "20px 20px 0 0" }}>
+            <div style={{ padding: "20px 20px 12px", borderBottom: "1px solid #E4DDCB" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <h3 style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 19, color: "#2B2622", margin: 0 }}>Gericht für {TAGE[pickerDay]}</h3>
+                <button onClick={() => setPickerDay(null)} style={{ background: "#EFE9DC", border: "none", borderRadius: 9, padding: 7, cursor: "pointer" }}>
+                  <X size={16} color="#5C5444" />
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
+                {[{ key: "alle", label: "Alle" }, ...Object.entries(KATEGORIE_INFO).map(([key, v]) => ({ key, label: v.label }))].map((c) => (
+                  <button key={c.key} onClick={() => setFilterKategorie(c.key)} style={{
+                    flexShrink: 0, padding: "7px 13px", borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+                    border: filterKategorie === c.key ? "none" : "1px solid #E4DDCB",
+                    background: filterKategorie === c.key ? "#2D5A3D" : "#FFFFFF",
+                    color: filterKategorie === c.key ? "#FAF6EF" : "#5C5444",
+                  }}>{c.label}</button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingTop: 8 }}>
+                {EIGENSCHAFTS_FILTER.map((f) => {
+                  const aktiv = aktiveEigenschaften.includes(f.key);
+                  return (
+                    <button key={f.key} onClick={() => toggleEigenschaft(f.key)} style={{
+                      flexShrink: 0, padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap",
+                      border: aktiv ? "1px solid #C4622D" : "1px solid #E4DDCB",
+                      background: aktiv ? "#C4622D1A" : "#FFFFFF",
+                      color: aktiv ? "#C4622D" : "#8A8270",
+                    }}>{f.label}</button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ overflowY: "auto", padding: 18, display: "grid", gap: 10 }}>
+              {gefilterteRezepte.length === 0 ? (
+                <p style={{ textAlign: "center", color: "#8A8270", fontSize: 13.5, padding: "20px 0" }}>Keine Gerichte passen zu dieser Filterkombination. Versuche, einen Filter zu entfernen.</p>
+              ) : (
+                gefilterteRezepte.map((r) => (
+                  <RecipeCard key={r.id} recipe={r} onSelect={waehleRezept} isSelected={plan[pickerDay]?.id === r.id} />
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <RecipeDetailModal recipe={detailRecipe} onClose={() => setDetailRecipe(null)} />
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+
+</script>
+
+</body>
+</html>
