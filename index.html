@@ -91,6 +91,10 @@ const Fish = (p) => <Icon {...p}><path d="M6.5 12c.94-3.46 4.94-6 8.5-6 3.56 0 6
 const Drumstick = (p) => <Icon {...p}><path d="M15.45 15.4c-2.13.65-4.3.32-5.7-1.1-2.29-2.27-1.76-6.5 1.17-9.42 2.93-2.93 7.15-3.46 9.43-1.18 1.41 1.41 1.74 3.57 1.1 5.71-1.4 4.3-2.5 4.4-6 6z"/><path d="m11.25 15.6-2.1 2.1"/><path d="M3.55 18.85a2.5 2.5 0 1 0 3.53 3.53 2.5 2.5 0 0 0-3.53-3.53Z"/></Icon>;
 const Beef = (p) => <Icon {...p}><circle cx="12.5" cy="8.5" r="6.5"/><path d="M16.4 16.5c.7 1.9.8 4-2.4 6.5-1.8-2.5-3.8-2.7-5.5-2.2"/><path d="M9.5 4.5C5 5 2 8 2 12.5S5 20 9.5 20.5"/></Icon>;
 const Leaf = (p) => <Icon {...p}><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></Icon>;
+const Package = (p) => <Icon {...p}><path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></Icon>;
+const RotateCcw = (p) => <Icon {...p}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></Icon>;
+const ChevronUp = (p) => <Icon {...p}><polyline points="18 15 12 9 6 15"/></Icon>;
+const ChevronDown = (p) => <Icon {...p}><polyline points="6 9 12 15 18 9"/></Icon>;
 
 
 </script>
@@ -696,7 +700,7 @@ function berechneAmpel(planRecipes) {
   return { status, score: punkte, maxScore: maxPunkte, hinweise, anzahl };
 }
 
-function aggregiereEinkaufsliste(planRecipes) {
+function aggregiereEinkaufsliste(planRecipes, vorratsListe, abgehaktItems) {
   const gefuellt = planRecipes.filter(Boolean);
   const map = new Map();
   gefuellt.forEach((r) => {
@@ -715,7 +719,19 @@ function aggregiereEinkaufsliste(planRecipes) {
       }
     });
   });
-  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, "de"));
+  const alle = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, "de"));
+
+  const vorratSet = new Set(vorratsListe || []);
+  const abgehaktSet = new Set(abgehaktItems || []);
+
+  // Drei Sektionen: zu kaufen (normal), abgehakt (manuell als vorhanden markiert),
+  // vorrat (in der Vorratsliste, automatisch unten einsortiert, sofern nicht
+  // bereits explizit abgehakt — das wäre redundant)
+  const zuKaufen = alle.filter((item) => !vorratSet.has(item.name) && !abgehaktSet.has(item.name));
+  const vorrat = alle.filter((item) => vorratSet.has(item.name) && !abgehaktSet.has(item.name));
+  const abgehakt = alle.filter((item) => abgehaktSet.has(item.name));
+
+  return { alle, zuKaufen, vorrat, abgehakt };
 }
 
 /* ============================================================
@@ -857,11 +873,37 @@ function RecipeDetailModal({ recipe, onClose }) {
 }
 
 /* ============================================================
+   VORRATS-STANDARDLISTE
+   ============================================================ */
+// Langhaltbare Grundzutaten (Speisekammer), die meist vorhanden sind und
+// daher nicht jede Woche neu auf dem Einkaufszettel stehen müssen.
+// Bearbeitbar in der App — diese Liste ist nur der Startwert.
+const VORRAT_STANDARDLISTE = [
+  // Getreide / Nudeln / Reis
+  "Reis", "Basmatireis", "Risottoreis", "Vollkornnudeln", "Spaghetti", "Penne",
+  "Fusilli", "Bandnudeln", "Tagliatelle", "Reisnudeln", "Glasnudeln", "Suppennudeln",
+  "Couscous (Vollkorn)", "Bulgur", "Quinoa", "Haferflocken",
+  // Konserven / Glas
+  "Passierte Tomaten", "Tomaten, gehackt, Dose", "Kidneybohnen, Dose",
+  "Kichererbsen, Dose", "Mais, Dose", "Thunfisch in Wasser, Dose", "Kokosmilch",
+  "Rote Linsen", "Braune Linsen",
+  // Gewürze / Würzmittel
+  "Salz", "Pfeffer", "Paprikapulver", "Currypulver", "Currypaste",
+  "Currypaste (mild)", "Muskat", "Senf", "Honig",
+  // Öle / Saucen / Brühe
+  "Olivenöl", "Sesamöl", "Sojasauce", "Gemüsebrühe", "Rinderbrühe",
+  "Hühnerbrühe", "Semmelbrösel",
+];
+
+/* ============================================================
    HAUPT-APP
    ============================================================ */
 // Firestore-Pfad: Collection "mealplan", Dokument "current"
 // { plan: [id|null, ...7], updatedAt: serverTimestamp }
 const MEALPLAN_DOC = window.firebaseDb ? window.firebaseDb.collection("mealplan").doc("current") : null;
+// Zweites Dokument für die Einkaufsliste-Begleitdaten:
+// { vorrat: [name, ...], abgehakt: [name, ...], updatedAt: serverTimestamp }
+const EINKAUF_DOC = window.firebaseDb ? window.firebaseDb.collection("mealplan").doc("einkauf") : null;
 
 function App() {
   const [plan, setPlan] = useState(Array(7).fill(null));
@@ -875,6 +917,12 @@ function App() {
   const [ladeStatus, setLadeStatus] = useState("laedt"); // laedt | bereit | fehler
   const [syncStatus, setSyncStatus] = useState("synchron"); // synchron | speichert | fehler
   const hatGeladen = useRef(false);
+
+  const [vorratsListe, setVorratsListe] = useState(VORRAT_STANDARDLISTE);
+  const [abgehaktItems, setAbgehaktItems] = useState([]); // Namen von Artikeln, die "schon vorrätig/gekauft" markiert wurden
+  const [neuerVorratName, setNeuerVorratName] = useState("");
+  const [showVorratsVerwaltung, setShowVorratsVerwaltung] = useState(false);
+  const hatEinkaufGeladen = useRef(false);
 
   // RECIPES-Lookup nach ID, für das Wiederherstellen aus Firestore
   const recipesById = useMemo(() => {
@@ -941,11 +989,49 @@ function App() {
     return () => { abgebrochen = true; };
   }, [plan]);
 
+  // Vorrat + abgehakte Artikel: gleiches Sync-Muster wie der Wochenplan,
+  // aber in einem eigenen Firestore-Dokument, damit beide Bereiche unabhängig
+  // voneinander laden/speichern können.
+  useEffect(() => {
+    if (!EINKAUF_DOC) return;
+    const unsubscribe = EINKAUF_DOC.onSnapshot(
+      { includeMetadataChanges: true },
+      (doc) => {
+        if (!doc.metadata.hasPendingWrites && doc.exists) {
+          const data = doc.data();
+          if (Array.isArray(data.vorrat)) setVorratsListe(data.vorrat);
+          if (Array.isArray(data.abgehakt)) setAbgehaktItems(data.abgehakt);
+        }
+        hatEinkaufGeladen.current = true;
+      },
+      (error) => console.error("Firestore-Fehler (Einkauf):", error)
+    );
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!hatEinkaufGeladen.current || !EINKAUF_DOC) return;
+    let abgebrochen = false;
+    async function speichern() {
+      try {
+        await EINKAUF_DOC.set({
+          vorrat: vorratsListe,
+          abgehakt: abgehaktItems,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        console.error("Speichern fehlgeschlagen (Einkauf):", e);
+      }
+    }
+    speichern();
+    return () => { abgebrochen = true; };
+  }, [vorratsListe, abgehaktItems]);
+
   const ampel = useMemo(() => berechneAmpel(plan), [plan]);
   const wochenNaehrwerte = useMemo(() => berechneWochenNaehrwerte(plan.filter(Boolean)), [plan]);
   const wochenProPortion = useMemo(() => proPortion(wochenNaehrwerte), [wochenNaehrwerte]);
   const anzahlGeplant = plan.filter(Boolean).length;
-  const einkaufsliste = useMemo(() => aggregiereEinkaufsliste(plan), [plan]);
+  const einkaufsliste = useMemo(() => aggregiereEinkaufsliste(plan, vorratsListe, abgehaktItems), [plan, vorratsListe, abgehaktItems]);
 
   const gefilterteRezepte = useMemo(() => {
     let liste = filterKategorie === "alle" ? RECIPES : RECIPES.filter((r) => r.category === filterKategorie);
@@ -992,6 +1078,26 @@ function App() {
     const neu = [...plan];
     neu[freierTag] = recipe;
     setPlan(neu);
+  }
+
+  // Artikel als "schon vorrätig/gekauft" markieren → wandert in die Abgehakt-Sektion,
+  // mit einem Klick dort wieder zurückholbar.
+  function artikelAbhaken(name) {
+    setAbgehaktItems((prev) => (prev.includes(name) ? prev : [...prev, name]));
+  }
+  function artikelZurueckholen(name) {
+    setAbgehaktItems((prev) => prev.filter((n) => n !== name));
+  }
+
+  // Vorrats-Liste bearbeiten: Artikel hinzufügen/entfernen
+  function vorratHinzufuegen(name) {
+    const getrimmt = name.trim();
+    if (!getrimmt || vorratsListe.includes(getrimmt)) return;
+    setVorratsListe((prev) => [...prev, getrimmt].sort((a, b) => a.localeCompare(b, "de")));
+    setNeuerVorratName("");
+  }
+  function vorratEntfernen(name) {
+    setVorratsListe((prev) => prev.filter((n) => n !== name));
   }
 
   return (
@@ -1043,7 +1149,7 @@ function App() {
       <div className="no-print" style={{ display: "flex", gap: 8, padding: "16px 20px 0", maxWidth: 720, margin: "0 auto" }}>
         {[
           { key: "plan", label: "Wochenplan", icon: ChefHat },
-          { key: "einkauf", label: `Einkaufsliste${anzahlGeplant > 0 ? ` (${einkaufsliste.length})` : ""}`, icon: ShoppingCart },
+          { key: "einkauf", label: `Einkaufsliste${anzahlGeplant > 0 ? ` (${einkaufsliste.zuKaufen.length})` : ""}`, icon: ShoppingCart },
         ].map((t) => {
           const Icon = t.icon;
           const active = view === t.key;
@@ -1173,30 +1279,128 @@ function App() {
           <div>
             <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <h2 style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontSize: 20, color: "#2B2622", margin: 0 }}>Einkaufsliste</h2>
-              {einkaufsliste.length > 0 && (
+              {einkaufsliste.alle.length > 0 && (
                 <button onClick={() => window.print()} style={{ display: "flex", alignItems: "center", gap: 6, background: "#F0EDE5", border: "none", borderRadius: 9, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, color: "#5C5444", cursor: "pointer" }}>
                   <Printer size={14} /> Drucken
                 </button>
               )}
             </div>
-            {einkaufsliste.length === 0 ? (
+            {einkaufsliste.alle.length === 0 ? (
               <div style={{ textAlign: "center", padding: "50px 20px", color: "#8A8270" }}>
                 <ShoppingCart size={32} style={{ marginBottom: 10, opacity: 0.5 }} />
                 <p style={{ fontSize: 14 }}>Noch keine Gerichte geplant. Wähle Gerichte im Wochenplan, dann erscheint hier automatisch die Einkaufsliste.</p>
               </div>
             ) : (
-              <div style={{ background: "#FFFFFF", border: "1px solid #E4DDCB", borderRadius: 16, padding: "6px 18px" }}>
-                {einkaufsliste.map((item, i) => (
-                  <label key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: i < einkaufsliste.length - 1 ? "1px solid #EFE9DC" : "none", cursor: "pointer" }}>
-                    <input type="checkbox" style={{ width: 17, height: 17, accentColor: "#2D5A3D" }} />
-                    <span style={{ flex: 1, fontSize: 14.5, color: "#3B362F" }}>{item.name}</span>
-                    <span style={{ fontSize: 13.5, fontWeight: 600, color: "#8A8270" }}>
-                      {typeof item.menge === "number" ? formatMenge(item.menge) : item.menge} {item.einheit}
-                    </span>
-                  </label>
-                ))}
-              </div>
+              <>
+                {/* SEKTION: ZU KAUFEN */}
+                {einkaufsliste.zuKaufen.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "20px", color: "#8A8270", fontSize: 13.5 }}>
+                    Alles entweder vorrätig oder schon abgehakt. 🎉
+                  </div>
+                ) : (
+                  <div style={{ background: "#FFFFFF", border: "1px solid #E4DDCB", borderRadius: 16, padding: "6px 18px", marginBottom: 18 }}>
+                    {einkaufsliste.zuKaufen.map((item, i) => (
+                      <label key={item.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: i < einkaufsliste.zuKaufen.length - 1 ? "1px solid #EFE9DC" : "none", cursor: "pointer" }}>
+                        <input type="checkbox" checked={false} onChange={() => artikelAbhaken(item.name)} style={{ width: 17, height: 17, accentColor: "#2D5A3D" }} />
+                        <span style={{ flex: 1, fontSize: 14.5, color: "#3B362F" }}>{item.name}</span>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: "#8A8270" }}>
+                          {typeof item.menge === "number" ? formatMenge(item.menge) : item.menge} {item.einheit}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {/* SEKTION: BEREITS VORRÄTIG / ABGEHAKT */}
+                {einkaufsliste.abgehakt.length > 0 && (
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "#8A8270", margin: "0 0 8px", display: "flex", alignItems: "center", gap: 6 }}>
+                      <Check size={13} /> Schon vorrätig / gekauft
+                    </div>
+                    <div style={{ background: "#F5F2EA", border: "1px solid #E4DDCB", borderRadius: 16, padding: "6px 18px" }}>
+                      {einkaufsliste.abgehakt.map((item, i) => (
+                        <div key={item.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: i < einkaufsliste.abgehakt.length - 1 ? "1px solid #EAE4D5" : "none" }}>
+                          <span style={{ flex: 1, fontSize: 14.5, color: "#9C9485", textDecoration: "line-through" }}>{item.name}</span>
+                          <button onClick={() => artikelZurueckholen(item.name)} title="Wieder auf die Einkaufsliste setzen" style={{
+                            display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#2D6CA3",
+                            fontSize: 12.5, fontWeight: 600, cursor: "pointer", padding: "4px 6px",
+                          }}>
+                            <RotateCcw size={12} /> zurückholen
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* SEKTION: VORRAT — MEIST VORHANDEN */}
+                {einkaufsliste.vorrat.length > 0 && (
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "#8A8270", margin: "0 0 8px", display: "flex", alignItems: "center", gap: 6 }}>
+                      <Package size={13} /> Vorrat — meist vorhanden, prüfen statt neu kaufen
+                    </div>
+                    <div style={{ background: "#F5F2EA", border: "1px solid #E4DDCB", borderRadius: 16, padding: "6px 18px" }}>
+                      {einkaufsliste.vorrat.map((item, i) => (
+                        <label key={item.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: i < einkaufsliste.vorrat.length - 1 ? "1px solid #EAE4D5" : "none", cursor: "pointer" }}>
+                          <input type="checkbox" checked={false} onChange={() => artikelAbhaken(item.name)} style={{ width: 17, height: 17, accentColor: "#8A8270" }} />
+                          <span style={{ flex: 1, fontSize: 14, color: "#5C5444" }}>{item.name}</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: "#A39B89" }}>
+                            {typeof item.menge === "number" ? formatMenge(item.menge) : item.menge} {item.einheit}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
+
+            {/* VORRATS-LISTE VERWALTEN */}
+            <div className="no-print" style={{ marginTop: 8 }}>
+              <button onClick={() => setShowVorratsVerwaltung((v) => !v)} style={{
+                display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#8A8270",
+                fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "8px 0",
+              }}>
+                <Package size={14} />
+                Vorrats-Liste verwalten ({vorratsListe.length})
+                {showVorratsVerwaltung ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+              {showVorratsVerwaltung && (
+                <div style={{ background: "#FFFFFF", border: "1px solid #E4DDCB", borderRadius: 16, padding: "14px 16px", marginTop: 8 }}>
+                  <p style={{ fontSize: 12.5, color: "#8A8270", margin: "0 0 12px" }}>
+                    Zutaten hier sind langhaltbare Vorratsartikel (Reis, Nudeln, Gewürze, Konserven, Öl …), die in der Einkaufsliste automatisch in einer eigenen Sektion ganz unten erscheinen statt oben aufzufallen.
+                  </p>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                    <input
+                      type="text"
+                      value={neuerVorratName}
+                      onChange={(e) => setNeuerVorratName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") vorratHinzufuegen(neuerVorratName); }}
+                      placeholder="Zutat hinzufügen, z. B. Essig"
+                      style={{ flex: 1, border: "1px solid #D9CFB8", borderRadius: 9, padding: "8px 12px", fontSize: 13.5, fontFamily: "'Inter', sans-serif" }}
+                    />
+                    <button onClick={() => vorratHinzufuegen(neuerVorratName)} style={{
+                      background: "#2D5A3D", border: "none", borderRadius: 9, padding: "8px 14px", color: "#FAF6EF", fontWeight: 600, fontSize: 13.5, cursor: "pointer",
+                    }}>
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 220, overflowY: "auto" }}>
+                    {vorratsListe.map((name) => (
+                      <span key={name} style={{
+                        display: "flex", alignItems: "center", gap: 6, background: "#F0EDE5", borderRadius: 999,
+                        padding: "5px 6px 5px 11px", fontSize: 12.5, color: "#3B362F",
+                      }}>
+                        {name}
+                        <button onClick={() => vorratEntfernen(name)} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, display: "flex" }}>
+                          <X size={11} color="#8A8270" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
