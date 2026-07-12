@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+<body style="font-family:monospace;padding:20px;background:#1a1a1a;color:#fff">
+<h2>App-Test</h2>
+<div id="log"></div>
+<div id="root"></div>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+function log(msg, color) {
+  var d = document.createElement('div');
+  d.style.color = color || '#fff';
+  d.style.margin = '4px 0';
+  d.style.wordBreak = 'break-all';
+  d.style.fontSize = '13px';
+  d.textContent = msg;
+  document.getElementById('log').appendChild(d);
+}
+window.onerror = function(msg, src, line, col) {
+  log('FEHLER: ' + msg, '#ff6b6b');
+  log('Zeile ' + line + ':' + col, '#ffa');
+};
+
+log('Test 1: Firebase init...');
+try {
+  firebase.initializeApp({
+    apiKey:"AIzaSyDJ0P2pNCxZ-o-YrnNraVD_uKGfenImDF4",
+    authDomain:"essensplaner-4b3cd.firebaseapp.com",
+    projectId:"essensplaner-4b3cd",
+    storageBucket:"essensplaner-4b3cd.firebasestorage.app",
+    messagingSenderId:"743521223796",
+    appId:"1:743521223796:web:abccdcbea13a486153fd21"
+  });
+  window.DB = firebase.firestore();
+  log('Firebase init OK', '#6bff6b');
+} catch(e) { log('FEHLER: ' + e, '#ff6b6b'); }
+
+log('Test 2: React.createElement...');
+try {
+  var e = React.createElement;
+  var el = e('div', {style:{color:'green'}}, 'Test OK');
+  log('createElement OK', '#6bff6b');
+} catch(e) { log('FEHLER: ' + e, '#ff6b6b'); }
+
+log('Test 3: useState...');
+try {
+  var useState = React.useState;
+  log('useState OK: ' + (typeof useState), '#6bff6b');
+} catch(e) { log('FEHLER: ' + e, '#ff6b6b'); }
+
+log('Test 4: Mini-App rendern...');
+try {
+  var ce = React.createElement;
+  var useState = React.useState;
+  
+  function MiniApp() {
+    var state = useState('Hallo');
+    return ce('div', {style:{color:'lime', padding:10}}, 
+      'App laeuft! Status: ' + state[0]
+    );
+  }
+  
+  var root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(ce(MiniApp, null));
+  log('Mini-App render OK', '#6bff6b');
+} catch(e) { log('FEHLER: ' + e.message, '#ff6b6b'); }
+
+log('--- Tests abgeschlossen ---', '#ffa');
+</script>
+</body>
+</html>
