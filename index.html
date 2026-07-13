@@ -416,12 +416,18 @@ function App(){
     return r.length===5?r:Array(5).fill(null);
   }
 
+  // planRef haelt immer den aktuellen plan-Wert, damit der onSnapshot-Callback
+  // (der nur bei byId-Aenderung neu erstellt wird) nie gegen einen veralteten
+  // plan-Stand vergleicht - das war die Ursache des Flacker-Bugs.
+  const planRef=useRef(plan);
+  useEffect(()=>{planRef.current=plan;},[plan]);
+
   // Firestore Plan
   useEffect(()=>{
     if(!MEALPLAN_DOC){setLSt('bereit');hatGeladen.current=true;return;}
     return MEALPLAN_DOC.onSnapshot({includeMetadataChanges:true},doc=>{
       if(!doc.metadata.hasPendingWrites&&doc.exists){
-        const neu=JSON.stringify(doc.data().plan||[]),akt=JSON.stringify(plan.map(r=>r?r.id:null));
+        const neu=JSON.stringify(doc.data().plan||[]),akt=JSON.stringify(planRef.current.map(r=>r?r.id:null));
         if(neu!==akt)setPlan(pFromIds(doc.data().plan));
       }
       setLSt('bereit');hatGeladen.current=true;
