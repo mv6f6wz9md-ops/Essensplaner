@@ -317,9 +317,9 @@ function RezeptFormular({rezept,onSave,onCancel,onDelete}){
   }
   function speichern(){
     if(!name.trim())return;
-    onSave({...(isE?{id:rezept.id}:{}),name:name.trim(),category:cat,carb,weight,zeit:Number(zeit)||30,tags,
+    onSave(Object.assign({},isE?{id:rezept.id}:{},{name:name.trim(),category:cat,carb,weight,zeit:Number(zeit)||30,tags,
       zutaten:zutaten.filter(([n])=>n.trim()),zubereitung:zub.filter(s=>s.trim()),
-      naehrwerte:{kcal:Number(nw.kcal)||0,protein:Number(nw.protein)||0,fett:Number(nw.fett)||0,kh:Number(nw.kh)||0,ballaststoffe:Number(nw.ballaststoffe)||0},eigenes:true});
+      naehrwerte:{kcal:Number(nw.kcal)||0,protein:Number(nw.protein)||0,fett:Number(nw.fett)||0,kh:Number(nw.kh)||0,ballaststoffe:Number(nw.ballaststoffe)||0},eigenes:true}));
   }
   const inp=S.inp;
   const lbl={fontSize:12,fontWeight:600,color:'#5C5444',marginBottom:5,display:'block'};
@@ -334,8 +334,8 @@ function RezeptFormular({rezept,onSave,onCancel,onDelete}){
       ),
       modus==='text-einfuegen' ? h('div',null,
         h('label',{style:lbl},'Rezepttext einfügen'),
-        h('textarea',{value:itext,onChange:e=>setItext(e.target.value),rows:12,style:{...inp,fontFamily:'monospace',fontSize:12.5,resize:'vertical'},placeholder:'200 g Mehl\n2 Eier\n\nMehl verrühren.'}),
-        h('button',{onClick:textUebernehmen,disabled:!itext.trim(),style:{...S.btn(itext.trim()?'#2D5A3D':'#D9CFB8','#FAF6EF',{width:'100%',marginTop:12})},'cursor':itext.trim()?'pointer':'default'},'Übernehmen')
+        h('textarea',{value:itext,onChange:e=>setItext(e.target.value),rows:12,style:Object.assign({},inp,{fontFamily:'monospace',fontSize:12.5,resize:'vertical'}),placeholder:'200 g Mehl\n2 Eier\n\nMehl verrühren.'}),
+        h('button',{onClick:textUebernehmen,disabled:!itext.trim(),style:Object.assign({},S.btn(itext.trim()?'#2D5A3D':'#D9CFB8','#FAF6EF',{width:'100%',marginTop:12,cursor:itext.trim()?'pointer':'default'}))},'Übernehmen')
       ) : h('div',{style:{display:'grid',gap:16}},
         h('div',null, h('label',{style:lbl},'Name'), h('input',{type:'text',value:name,onChange:e=>setName(e.target.value),placeholder:'z. B. Omas Kartoffelsuppe',style:inp})),
         h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
@@ -368,7 +368,7 @@ function RezeptFormular({rezept,onSave,onCancel,onDelete}){
           h('div',{style:{display:'grid',gap:6}},
             ...zub.map((s,i)=>h('div',{key:i,style:{display:'flex',gap:6}},
               h('span',{style:{fontSize:12.5,color:'#8A8270',fontWeight:600,paddingTop:9,minWidth:16}},(i+1)+'.'),
-              h('textarea',{value:s,onChange:e=>setZub(p=>p.map((x,j)=>j===i?e.target.value:x)),rows:2,style:{...inp,flex:1,resize:'vertical'},placeholder:'Schritt'}),
+              h('textarea',{value:s,onChange:e=>setZub(p=>p.map((x,j)=>j===i?e.target.value:x)),rows:2,style:Object.assign({},inp,{flex:1,resize:'vertical'}),placeholder:'Schritt'}),
               h('button',{onClick:()=>setZub(p=>p.filter((_,j)=>j!==i)),style:{background:'none',border:'none',cursor:'pointer',padding:4,alignSelf:'flex-start',marginTop:6}},ICONS.x(15,'#B0A890'))
             ))
           ),
@@ -376,7 +376,7 @@ function RezeptFormular({rezept,onSave,onCancel,onDelete}){
         ),
         h('div',{style:{display:'flex',gap:8,marginTop:8}},
           isE && h('button',{onClick:()=>onDelete(rezept.id),style:{display:'flex',alignItems:'center',gap:6,background:'none',border:'1px solid #C24B3F',borderRadius:10,padding:'12px 16px',color:'#C24B3F',fontWeight:600,fontSize:13.5,cursor:'pointer'}},ICONS.trash(14,'#C24B3F'),'Löschen'),
-          h('button',{onClick:speichern,disabled:!name.trim(),style:{...S.btn(name.trim()?'#2D5A3D':'#D9CFB8','#FAF6EF',{flex:1})}},isE?'Speichern':'Anlegen')
+          h('button',{onClick:speichern,disabled:!name.trim(),style:Object.assign({},S.btn(name.trim()?'#2D5A3D':'#D9CFB8','#FAF6EF',{flex:1}))},isE?'Speichern':'Anlegen')
         )
       )
     )
@@ -481,14 +481,14 @@ function App(){
   function zurueckholen(name){setAbgehakt(p=>p.filter(n=>n!==name));}
   function vAdd(name){const t=name.trim();if(!t||vorrat.includes(t))return;setVorrat(p=>[...p,t].sort((a,b)=>a.localeCompare(b,'de')));setNvName('');}
   function vRem(name){setVorrat(p=>p.filter(n=>n!==name));}
-  function bewerte(id,s){setBew(p=>{const k=String(id),n={...p};if(n[k]===s)delete n[k];else n[k]=s;return n;});}
+  function bewerte(id,s){setBew(p=>{const k=String(id),n=Object.assign({},p);if(n[k]===s)delete n[k];else n[k]=s;return n;});}
   function hide(id){setAusgebl(p=>p.includes(id)?p:[...p,id]);}
   function unhide(id){setAusgebl(p=>p.filter(x=>x!==id));}
   function einplanen(name){const r=alleR.find(x=>x.name===name);if(!r)return;const f=plan.findIndex(x=>x===null);if(f===-1){setPicker(0);return;}const n=[...plan];n[f]=r;setPlan(n);}
   function nextId(){return Math.max(0,...alleR.map(r=>r.id))+1;}
   function saveRez(data){
     if(data.id){setEigene(p=>p.map(r=>r.id===data.id?data:r));setPlan(p=>p.map(r=>r&&r.id===data.id?data:r));}
-    else setEigene(p=>[...p,{...data,id:nextId(),eigenes:true}]);
+    else setEigene(p=>[...p,Object.assign({},data,{id:nextId(),eigenes:true})]);
     setShowForm(false);setEditRez(null);
   }
   function delRez(id){setEigene(p=>p.filter(r=>r.id!==id));setPlan(p=>p.map(r=>r&&r.id===id?null:r));setShowForm(false);setEditRez(null);}
@@ -609,7 +609,7 @@ function App(){
         h('div',{style:{display:'grid',gap:10,marginBottom:22}},
           ...TAGE.map((tag,idx)=>{
             const r=plan[idx],info=r?KINFO[r.category]:null,tmpl=WOCHEN_TEMPLATE[idx];
-            return h('div',{key:tag,style:{...S.card,display:'flex',alignItems:'center',gap:12}},
+            return h('div',{key:tag,style:Object.assign({},S.card,{display:'flex',alignItems:'center',gap:12})},
               h('div',{style:{width:68,flexShrink:0}},
                 h('div',{style:{fontSize:11,color:'#8A8270',fontWeight:600,textTransform:'uppercase'}},tag.slice(0,2)),
                 h('div',{style:{fontSize:13,color:'#5C5444',fontWeight:600}},tag),
@@ -738,8 +738,7 @@ function App(){
           h('button',{onClick:()=>{setEditRez(null);setShowForm(true);},style:{display:'flex',alignItems:'center',justifyContent:'center',gap:6,background:'#fff',border:'1px dashed #2D5A3D',borderRadius:14,padding:14,color:'#2D5A3D',fontWeight:600,fontSize:13.5,cursor:'pointer'}},
             ICONS.plus(15), 'Eigenes Rezept hinzufügen'
           ),
-          gefiltert.length===0 ? h('p',{style:{textAlign:'center',color:'#8A8270',fontSize:13.5,padding:'20px 0'}},'Keine Gerichte für diese Filter.') :
-          ...gefiltert.map(r=>h(RecipeCard,{key:r.id,recipe:r,onSelect:waehle,isSelected:plan[picker]?.id===r.id,bewertung:bew[String(r.id)],onRate:bewerte,onHide:hide,onEdit:r.eigenes?()=>{setEditRez(r);setShowForm(true);}:null})),
+          gefiltert.length===0 ? h('p',{style:{textAlign:'center',color:'#8A8270',fontSize:13.5,padding:'20px 0'}},'Keine Gerichte für diese Filter.') : gefiltert.map(r=>h(RecipeCard,{key:r.id,recipe:r,onSelect:waehle,isSelected:plan[picker]?.id===r.id,bewertung:bew[String(r.id)],onRate:bewerte,onHide:hide,onEdit:r.eigenes?()=>{setEditRez(r);setShowForm(true);}:null})),
           ausgeblRez.length>0 && h('div',{style:{marginTop:8}},
             h('button',{onClick:()=>setShowAusgebl(v=>!v),style:{display:'flex',alignItems:'center',gap:6,background:'none',border:'none',color:'#8A8270',fontSize:13,fontWeight:600,cursor:'pointer',padding:'8px 0',width:'100%'}},
               ICONS.eyeOff(14), 'Ausgeblendet ('+ausgeblRez.length+')', showAusgebl?ICONS.chevUp(14):ICONS.chevDown(14)
