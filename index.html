@@ -155,8 +155,29 @@ const EFILTER=[
 const MEALPLAN_DOC=window.DB?window.DB.collection('mealplan').doc('current'):null;
 const EINKAUF_DOC=window.DB?window.DB.collection('mealplan').doc('einkauf'):null;
 const REZEPTE_DOC=window.DB?window.DB.collection('mealplan').doc('rezepte'):null;
+const VERLAUF_DOC=window.DB?window.DB.collection('mealplan').doc('verlauf'):null;
 
 // Hilfsfunktionen
+// ISO-Wochenschlüssel (z.B. "2026-29"), damit Firestore-Feldpfade eindeutig
+// und stabil sind. Montag gilt als Wochenanfang (ISO 8601).
+function isoWeekKey(date){
+  const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));
+  const tag=(d.getUTCDay()+6)%7; // Montag=0 .. Sonntag=6
+  d.setUTCDate(d.getUTCDate()-tag+3); // auf den Donnerstag der Woche verschieben (ISO-Regel)
+  const jahrStart=new Date(Date.UTC(d.getUTCFullYear(),0,4));
+  const woche=1+Math.round(((d-jahrStart)/86400000-3+((jahrStart.getUTCDay()+6)%7))/7);
+  return d.getUTCFullYear()+'-'+String(woche).padStart(2,'0');
+}
+function wochenKeyVorNWochen(n){
+  const d=new Date();d.setDate(d.getDate()-n*7);
+  return isoWeekKey(d);
+}
+function montagDerWoche(date){
+  const d=new Date(date);
+  const tag=(d.getDay()+6)%7;
+  d.setDate(d.getDate()-tag);
+  return d;
+}
 function parseDE(n){return typeof n==='string'?parseFloat(n.replace(',','.')):n;}
 function fmtMenge(m){const n=parseDE(m);return Number.isInteger(n)?String(n):String(n).replace('.',',');}
 function pp(nw){return{kcal:nw.kcal/EW,protein:nw.protein/EW,fett:nw.fett/EW,kh:nw.kh/EW,bst:nw.ballaststoffe/EW};}
@@ -521,8 +542,9 @@ function App(){
   const [bew,setBew]=useState({});
   const [ausgebl,setAusgebl]=useState([]);
   const [eigene,setEigene]=useState([]);
-  const [verlauf,setVerlauf]=useState([]);
   const hatRez=useRef(false);
+  const [verlaufWochen,setVerlaufWochen]=useState({});
+  const hatVerlaufGeladen=useRef(false);
   const [view,setView]=useState('plan');
   const [picker,setPicker]=useState(null);
   const [detail,setDetail]=useState(null);
@@ -592,17 +614,76 @@ function App(){
   useEffect(()=>{
     if(!REZEPTE_DOC)return;
     return REZEPTE_DOC.onSnapshot({includeMetadataChanges:true},doc=>{
-      if(!doc.metadata.hasPendingWrites&&doc.exists){const d=doc.data();if(d.bewertungen)setBew(d.bewertungen);if(Array.isArray(d.ausgeblendet))setAusgebl(d.ausgeblendet);if(Array.isArray(d.eigeneRezepte))setEigene(d.eigeneRezepte);if(Array.isArray(d.verlauf))setVerlauf(d.verlauf);}
+      if(!doc.metadata.hasPendingWrites&&doc.exists){const d=doc.data();if(d.bewertungen)setBew(d.bewertungen);if(Array.isArray(d.ausgeblendet))setAusgebl(d.ausgeblendet);if(Array.isArray(d.eigeneRezepte))setEigene(d.eigeneRezepte);}
       hatRez.current=true;
     },()=>{});
   },[]);
-  useEffect(()=>{if(!hatRez.current||!REZEPTE_DOC)return;REZEPTE_DOC.set({bewertungen:bew,ausgeblendet:ausgebl,eigeneRezepte:eigene,verlauf,updatedAt:firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{});},[bew,ausgebl,eigene,verlauf]);
+  useEffect(()=>{if(!hatRez.current||!REZEPTE_DOC)return;REZEPTE_DOC.set({bewertungen:bew,ausgeblendet:ausgebl,eigeneRezepte:eigene,updatedAt:firebase.firestore.FieldValue.serverTimestamp()}).catch(()=>{});},[bew,ausgebl,eigene]);
+
+  // Firestore Verlauf: eigenes Dokument, wochenweise mit gezieltem Merge
+  // (Feldpfad pro Wochenschlüssel) statt komplettem Überschreiben — das war
+  // die Ursache, warum der Verlauf sich vorher immer wieder gelöscht hat,
+  // wenn parallel z.B. eine Bewertung im selben Dokument gespeichert wurde.
+  useEffect(()=>{
+    if(!VERLAUF_DOC)return;
+    return VERLAUF_DOC.onSnapshot({includeMetadataChanges:true},doc=>{
+      if(!doc.metadata.hasPendingWrites&&doc.exists){
+        const d=doc.data();
+        if(d.weeks&&typeof d.weeks==='object')setVerlaufWochen(d.weeks);
+      }
+      hatVerlaufGeladen.current=true;
+    },()=>{});
+  },[]);
+  useEffect(()=>{
+    if(!hatVerlaufGeladen.current||!VERLAUF_DOC)return;
+    const heuteKey=isoWeekKey(new Date());
+    const snapshot=plan.map(r=>r?{id:r.id,name:r.name}:null);
+    setVerlaufWochen(p=>({...p,[heuteKey]:snapshot}));
+    const alleKeys=Object.keys(Object.assign({},verlaufWochen,{[heuteKey]:snapshot}));
+    const behalten=new Set([0,1,2,3,4].map(n=>wochenKeyVorNWochen(n)));
+    const zuLoeschen=alleKeys.filter(k=>!behalten.has(k));
+    const updatePayload={['weeks.'+heuteKey]:snapshot,updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+    zuLoeschen.forEach(k=>{updatePayload['weeks.'+k]=firebase.firestore.FieldValue.delete();});
+    VERLAUF_DOC.set(updatePayload,{merge:true}).catch(()=>{});
+  },[plan]);
 
   const aSet=useMemo(()=>new Set(ausgebl),[ausgebl]);
   const ekl=useMemo(()=>aggregiere([...plan,...snackPlan],vorrat,abgehakt,haushaltFaktor),[plan,snackPlan,vorrat,abgehakt,haushaltFaktor]);
   const ampel=useMemo(()=>berechneAmpel(plan,alleR),[plan,alleR]);
   const nGeplant=plan.filter(Boolean).length;
   const nwPP=useMemo(()=>pp(sumNW([...plan,...snackPlan].filter(Boolean))),[plan,snackPlan]);
+
+  // Verlauf: letzte 5 Wochen, neueste zuerst, mit sprechendem Label
+  const angezeigteWochen=useMemo(()=>{
+    const heuteKey=isoWeekKey(new Date());
+    const keys=[0,1,2,3,4].map(n=>wochenKeyVorNWochen(n));
+    const labelFuer=(key,n)=>{
+      if(n===0)return 'Diese Woche';
+      if(n===1)return 'Letzte Woche';
+      const montag=montagDerWoche(new Date(Date.now()-n*7*86400000));
+      return 'Woche vom '+String(montag.getDate()).padStart(2,'0')+'.'+String(montag.getMonth()+1).padStart(2,'0')+'.';
+    };
+    return keys.map((key,n)=>({key,label:labelFuer(key,n),tage:(verlaufWochen[key]||Array(5).fill(null))}))
+      .filter(w=>w.key===heuteKey || w.tage.some(Boolean));
+  },[verlaufWochen]);
+
+  // Warnung: Rezept in dieser + den letzten 2 Wochen jeweils mind. einmal verwendet (3 Wochen in Folge)
+  const wiederholungsWarnungen=useMemo(()=>{
+    const w0=verlaufWochen[wochenKeyVorNWochen(0)]||[];
+    const w1=verlaufWochen[wochenKeyVorNWochen(1)]||[];
+    const w2=verlaufWochen[wochenKeyVorNWochen(2)]||[];
+    const idsW1=new Set(w1.filter(Boolean).map(e=>e.id));
+    const idsW2=new Set(w2.filter(Boolean).map(e=>e.id));
+    const gesehen=new Set();
+    const treffer=[];
+    w0.filter(Boolean).forEach(e=>{
+      if(!gesehen.has(e.id) && idsW1.has(e.id) && idsW2.has(e.id)){
+        gesehen.add(e.id);
+        treffer.push(e.name);
+      }
+    });
+    return treffer;
+  },[verlaufWochen]);
 
   const gefiltert=useMemo(()=>{
     let l=fKat==='alle'?alleR:alleR.filter(r=>r.category===fKat);
@@ -618,13 +699,7 @@ function App(){
   },[alleR,fKat,aSet]);
 
   // Handler
-  function verlaufEintragen(rezepte){
-    const heute=new Date().toISOString().slice(0,10);
-    const neueEintraege=rezepte.filter(Boolean).map(r=>({id:r.id,name:r.name,datum:heute}));
-    if(!neueEintraege.length)return;
-    setVerlauf(p=>[...neueEintraege,...p].slice(0,80));
-  }
-  function waehle(r){if(picker===null)return;const n=[...plan];n[picker]=r;setPlan(n);setPicker(null);verlaufEintragen([r]);}
+  function waehle(r){if(picker===null)return;const n=[...plan];n[picker]=r;setPlan(n);setPicker(null);}
   function entferne(i){const n=[...plan];n[i]=null;setPlan(n);}
   function waehleSnack(s){if(snackPicker===null)return;const n=[...snackPlan];n[snackPicker]=s;setSnackPlan(n);setSnackPicker(null);}
   function entferneSnack(i){const n=[...snackPlan];n[i]=null;setSnackPlan(n);}
@@ -667,7 +742,7 @@ function App(){
   }
   function delRez(id){setEigene(p=>p.filter(r=>r.id!==id));setPlan(p=>p.map(r=>r&&r.id===id?null:r));setShowForm(false);setEditRez(null);}
   function vorschlagGen(){setVorschlag(genVorschlag(alleR,ausgebl,bew));}
-  function vorschlagOk(){setPlan(vorschlag.map(r=>r||null));verlaufEintragen(vorschlag);setVorschlag(null);}
+  function vorschlagOk(){setPlan(vorschlag.map(r=>r||null));setVorschlag(null);}
   function vorschlagNeu(idx){
     const nv=[...vorschlag],used=new Set(nv.filter((r,i)=>r&&i!==idx).map(r=>r.id));
     const ka=WOCHEN_TEMPLATE[idx].kat,karr=Array.isArray(ka)?ka:[ka];
@@ -771,6 +846,17 @@ function App(){
           h('div',{style:{display:'flex',gap:8}},
             h('button',{onClick:()=>setVorschlag(null),style:{flex:1,background:'#F0EDE5',border:'none',borderRadius:10,padding:12,color:'#5C5444',fontWeight:600,fontSize:13.5,cursor:'pointer'}},'Verwerfen'),
             h('button',{onClick:vorschlagOk,style:{flex:2,background:'#2D5A3D',border:'none',borderRadius:10,padding:12,color:'#FAF6EF',fontWeight:600,fontSize:13.5,cursor:'pointer'}},'Woche übernehmen')
+          )
+        ),
+
+        // Wiederholungs-Warnung: Gericht 3 Wochen in Folge verwendet
+        wiederholungsWarnungen.length>0 && h('div',{style:{background:'#FDF3EC',border:'1px solid #E8C9A8',borderRadius:14,padding:'14px 16px',marginBottom:18}},
+          h('div',{style:{display:'flex',gap:8}},
+            h('span',null,'⚠️'),
+            h('div',null,
+              h('div',{style:{fontSize:13,fontWeight:700,color:'#8C5A2A',marginBottom:4}},'Schon 3 Wochen in Folge auf dem Plan'),
+              ...wiederholungsWarnungen.map(name=>h('div',{key:name,style:{fontSize:13,color:'#8C5A2A',marginBottom:2}},'• '+name))
+            )
           )
         ),
 
@@ -937,18 +1023,22 @@ function App(){
       // VERLAUF VIEW
       view==='verlauf' && h('div',null,
         h('h2',{style:{fontFamily:"'Source Serif 4',Georgia,serif",fontSize:20,color:'#2B2622',margin:'0 0 4px'}},'Verlauf'),
-        h('p',{style:{fontSize:12.5,color:'#8A8270',margin:'0 0 16px'}},'Zuletzt eingeplante Gerichte — hilft, Wiederholungen zu vermeiden.'),
-        verlauf.length===0 ? h('div',{style:{textAlign:'center',padding:'50px 20px',color:'#8A8270'}}, ICONS.clock(32), h('p',{style:{fontSize:14}},'Noch keine Einträge. Sobald du Gerichte einplanst, erscheinen sie hier.')) :
-        h('div',{style:{background:'#fff',border:'1px solid #E4DDCB',borderRadius:16,padding:'6px 18px'}},
-          ...verlauf.slice(0,50).map((e,i)=>{
-            const heute=new Date().toISOString().slice(0,10);
-            const gestern=new Date(Date.now()-86400000).toISOString().slice(0,10);
-            const label=e.datum===heute?'Heute':e.datum===gestern?'Gestern':e.datum;
-            return h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'11px 0',borderBottom:i<Math.min(verlauf.length,50)-1?'1px solid #EFE9DC':'none'}},
-              h('span',{style:{fontSize:14,color:'#3B362F'}},e.name),
-              h('span',{style:{fontSize:12,color:'#8A8270',flexShrink:0}},label)
-            );
-          })
+        h('p',{style:{fontSize:12.5,color:'#8A8270',margin:'0 0 16px'}},'Die letzten 5 Wochen — hilft, Wiederholungen zu erkennen.'),
+        angezeigteWochen.length===0 ? h('div',{style:{textAlign:'center',padding:'50px 20px',color:'#8A8270'}}, ICONS.clock(32), h('p',{style:{fontSize:14}},'Noch keine Einträge. Sobald du Gerichte einplanst, erscheinen sie hier.')) :
+        h('div',{style:{display:'grid',gap:14}},
+          ...angezeigteWochen.map(({key,label,tage},wi)=>
+            h('div',{key:key,style:{background:'#fff',border:'1px solid #E4DDCB',borderRadius:16,padding:'14px 18px'}},
+              h('div',{style:{fontSize:13.5,fontWeight:700,color:'#2D5A3D',marginBottom:8}},label),
+              h('div',{style:{display:'grid',gap:6}},
+                ...tage.map((e,i)=>
+                  h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,padding:'6px 0',borderBottom:i<4?'1px solid #EFE9DC':'none'}},
+                    h('span',{style:{fontSize:11,color:'#8A8270',fontWeight:600,width:26,flexShrink:0}},TAGE[i].slice(0,2)),
+                    h('span',{style:{flex:1,fontSize:13.5,color:e?'#3B362F':'#C7BFA9'}},e?e.name:'–')
+                  )
+                )
+              )
+            )
+          )
         )
       )
     ),
