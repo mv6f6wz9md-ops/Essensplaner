@@ -172,6 +172,25 @@ function wochenKeyVorNWochen(n){
   const d=new Date();d.setDate(d.getDate()-n*7);
   return isoWeekKey(d);
 }
+// Planungswoche: Samstag und Sonntag zählen bereits als "nächste Woche", weil
+// an diesen Tagen typischerweise schon für die kommende Woche geplant wird.
+// Der Wechsel passiert also faktisch Freitag 23:59 -> Samstag 00:00.
+function planWocheKey(date){
+  const d=new Date(date);
+  const tag=d.getDay(); // 0=So,1=Mo,...,6=Sa
+  if(tag===6)d.setDate(d.getDate()+2); // Samstag -> übernächster Tag = Montag der neuen Woche
+  else if(tag===0)d.setDate(d.getDate()+1); // Sonntag -> nächster Tag = Montag der neuen Woche
+  return isoWeekKey(d);
+}
+function planWocheVorNWochen(n){
+  const heute=new Date();
+  const tag=heute.getDay();
+  const referenz=new Date(heute);
+  if(tag===6)referenz.setDate(referenz.getDate()+2);
+  else if(tag===0)referenz.setDate(referenz.getDate()+1);
+  referenz.setDate(referenz.getDate()-n*7);
+  return isoWeekKey(referenz);
+}
 function montagDerWoche(date){
   const d=new Date(date);
   const tag=(d.getDay()+6)%7;
@@ -610,10 +629,20 @@ function App(){
     return MEALPLAN_DOC.onSnapshot({includeMetadataChanges:true},doc=>{
       if(!doc.metadata.hasPendingWrites&&doc.exists){
         const d=doc.data();
-        const neu=JSON.stringify(d.plan||[]),akt=JSON.stringify(planRef.current.map(r=>r?r.id:null));
-        if(neu!==akt)setPlan(pFromIds(d.plan));
-        const neuS=JSON.stringify(d.snackPlan||[]),aktS=JSON.stringify(snackPlanRef.current.map(r=>r?r.id:null));
-        if(neuS!==aktS)setSnackPlan(snackPFromIds(d.snackPlan));
+        const aktuelleWoche=planWocheKey(new Date());
+        const gespeicherteWoche=d.planWeekKey;
+        if(gespeicherteWoche && gespeicherteWoche!==aktuelleWoche){
+          // Neue Planungswoche begonnen (Grenze Freitag 23:59 -> Samstag 00:00
+          // überschritten): der alte Plan ist im Verlauf bereits archiviert,
+          // der live Plan wird für die neue Woche geleert statt weiterbearbeitet.
+          if(planRef.current.some(Boolean))setPlan(Array(5).fill(null));
+          if(snackPlanRef.current.some(Boolean))setSnackPlan(Array(5).fill(null));
+        } else {
+          const neu=JSON.stringify(d.plan||[]),akt=JSON.stringify(planRef.current.map(r=>r?r.id:null));
+          if(neu!==akt)setPlan(pFromIds(d.plan));
+          const neuS=JSON.stringify(d.snackPlan||[]),aktS=JSON.stringify(snackPlanRef.current.map(r=>r?r.id:null));
+          if(neuS!==aktS)setSnackPlan(snackPFromIds(d.snackPlan));
+        }
       }
       setLSt('bereit');hatGeladen.current=true;
     },()=>setLSt('fehler'));
@@ -621,7 +650,7 @@ function App(){
   useEffect(()=>{
     if(!hatGeladen.current||!MEALPLAN_DOC)return;
     let ab=false;setSSt('speichert');
-    MEALPLAN_DOC.set({plan:plan.map(r=>r?r.id:null),snackPlan:snackPlan.map(r=>r?r.id:null),updatedAt:firebase.firestore.FieldValue.serverTimestamp()})
+    MEALPLAN_DOC.set({plan:plan.map(r=>r?r.id:null),snackPlan:snackPlan.map(r=>r?r.id:null),planWeekKey:planWocheKey(new Date()),updatedAt:firebase.firestore.FieldValue.serverTimestamp()})
       .then(()=>{if(!ab)setSSt('sync');}).catch(()=>{if(!ab)setSSt('fehler');});
     return()=>{ab=true;};
   },[plan,snackPlan]);
@@ -662,11 +691,11 @@ function App(){
   },[]);
   useEffect(()=>{
     if(!verlaufBereit||!VERLAUF_DOC)return;
-    const heuteKey=isoWeekKey(new Date());
+    const heuteKey=planWocheKey(new Date());
     const snapshot=plan.map(r=>r?{id:r.id,name:r.name}:null);
     setVerlaufWochen(p=>({...p,[heuteKey]:snapshot}));
     const alleKeys=Object.keys(Object.assign({},verlaufWochen,{[heuteKey]:snapshot}));
-    const behalten=new Set([0,1,2,3,4].map(n=>wochenKeyVorNWochen(n)));
+    const behalten=new Set([0,1,2,3,4].map(n=>planWocheVorNWochen(n)));
     const zuLoeschen=alleKeys.filter(k=>!behalten.has(k));
     const updatePayload={['weeks.'+heuteKey]:snapshot,updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
     zuLoeschen.forEach(k=>{updatePayload['weeks.'+k]=firebase.firestore.FieldValue.delete();});
@@ -681,8 +710,8 @@ function App(){
 
   // Verlauf: letzte 5 Wochen, neueste zuerst, mit sprechendem Label
   const angezeigteWochen=useMemo(()=>{
-    const heuteKey=isoWeekKey(new Date());
-    const keys=[0,1,2,3,4].map(n=>wochenKeyVorNWochen(n));
+    const heuteKey=planWocheKey(new Date());
+    const keys=[0,1,2,3,4].map(n=>planWocheVorNWochen(n));
     const labelFuer=(key,n)=>{
       if(n===0)return 'Diese Woche';
       if(n===1)return 'Letzte Woche';
@@ -695,9 +724,9 @@ function App(){
 
   // Warnung: Rezept in dieser + den letzten 2 Wochen jeweils mind. einmal verwendet (3 Wochen in Folge)
   const wiederholungsWarnungen=useMemo(()=>{
-    const w0=verlaufWochen[wochenKeyVorNWochen(0)]||[];
-    const w1=verlaufWochen[wochenKeyVorNWochen(1)]||[];
-    const w2=verlaufWochen[wochenKeyVorNWochen(2)]||[];
+    const w0=verlaufWochen[planWocheVorNWochen(0)]||[];
+    const w1=verlaufWochen[planWocheVorNWochen(1)]||[];
+    const w2=verlaufWochen[planWocheVorNWochen(2)]||[];
     const idsW1=new Set(w1.filter(Boolean).map(e=>e.id));
     const idsW2=new Set(w2.filter(Boolean).map(e=>e.id));
     const gesehen=new Set();
