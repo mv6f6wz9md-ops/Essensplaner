@@ -570,7 +570,7 @@ function App(){
   const [eigene,setEigene]=useState([]);
   const hatRez=useRef(false);
   const [verlaufWochen,setVerlaufWochen]=useState({});
-  const hatVerlaufGeladen=useRef(false);
+  const [verlaufBereit,setVerlaufBereit]=useState(false);
   const [view,setView]=useState('plan');
   const [picker,setPicker]=useState(null);
   const [detail,setDetail]=useState(null);
@@ -651,17 +651,17 @@ function App(){
   // die Ursache, warum der Verlauf sich vorher immer wieder gelöscht hat,
   // wenn parallel z.B. eine Bewertung im selben Dokument gespeichert wurde.
   useEffect(()=>{
-    if(!VERLAUF_DOC)return;
+    if(!VERLAUF_DOC){setVerlaufBereit(true);return;}
     return VERLAUF_DOC.onSnapshot({includeMetadataChanges:true},doc=>{
       if(!doc.metadata.hasPendingWrites&&doc.exists){
         const d=doc.data();
         if(d.weeks&&typeof d.weeks==='object')setVerlaufWochen(d.weeks);
       }
-      hatVerlaufGeladen.current=true;
-    },()=>{});
+      setVerlaufBereit(true);
+    },err=>{console.error('Verlauf-Ladefehler:',err);setVerlaufBereit(true);});
   },[]);
   useEffect(()=>{
-    if(!hatVerlaufGeladen.current||!VERLAUF_DOC)return;
+    if(!verlaufBereit||!VERLAUF_DOC)return;
     const heuteKey=isoWeekKey(new Date());
     const snapshot=plan.map(r=>r?{id:r.id,name:r.name}:null);
     setVerlaufWochen(p=>({...p,[heuteKey]:snapshot}));
@@ -670,8 +670,8 @@ function App(){
     const zuLoeschen=alleKeys.filter(k=>!behalten.has(k));
     const updatePayload={['weeks.'+heuteKey]:snapshot,updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
     zuLoeschen.forEach(k=>{updatePayload['weeks.'+k]=firebase.firestore.FieldValue.delete();});
-    VERLAUF_DOC.set(updatePayload,{merge:true}).catch(()=>{});
-  },[plan]);
+    VERLAUF_DOC.set(updatePayload,{merge:true}).catch(err=>console.error('Verlauf-Schreibfehler:',err));
+  },[plan,verlaufBereit]);
 
   const aSet=useMemo(()=>new Set(ausgebl),[ausgebl]);
   const ekl=useMemo(()=>aggregiere([...plan,...snackPlan],vorrat,abgehakt,haushaltFaktor),[plan,snackPlan,vorrat,abgehakt,haushaltFaktor]);
