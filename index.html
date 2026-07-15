@@ -814,28 +814,28 @@ function App(){
             const sn=snackPlan[idx],sinfo=sn?SNACK_KATEGORIEN[sn.category]:null;
             const istAusgewaehlt=tauschAuswahl===idx;
             return h('div',{key:tag,style:{display:'grid',gap:3},onClick:tauschModus?()=>tagAntippen(idx):undefined},
-              h('div',{style:Object.assign({},S.card,{display:'flex',alignItems:'center',gap:12,cursor:tauschModus?'pointer':'default',border:istAusgewaehlt?'2px solid #C4622D':S.card.border,background:istAusgewaehlt?'#FDF3EC':'#fff'})},
-                h('div',{style:{width:68,flexShrink:0}},
-                  h('div',{style:{fontSize:11,color:'#8A8270',fontWeight:600,textTransform:'uppercase'}},tag.slice(0,2)),
-                  h('div',{style:{fontSize:13,color:'#5C5444',fontWeight:600}},tag),
-                  h('div',{style:{fontSize:10,color:'#B0A890',lineHeight:1.25}},tmpl.label)
+              h('div',{style:Object.assign({},S.card,{display:'flex',alignItems:'flex-start',gap:10,cursor:tauschModus?'pointer':'default',border:istAusgewaehlt?'2px solid #C4622D':S.card.border,background:istAusgewaehlt?'#FDF3EC':'#fff'})},
+                h('div',{style:{width:30,flexShrink:0,paddingTop:2}},
+                  h('div',{style:{fontSize:13,color:'#5C5444',fontWeight:700}},tag.slice(0,2))
                 ),
                 r ? h('div',{style:{display:'contents'}},
-                  h('div',{onClick:tauschModus?undefined:()=>setDetail(r),style:{flex:1,cursor:'pointer'}},
+                  h('div',{onClick:tauschModus?undefined:()=>setDetail(r),style:{flex:1,cursor:'pointer',minWidth:0}},
                     h('div',{style:{display:'flex',alignItems:'center',gap:6,marginBottom:2}},
                       info && ICONS[info.icon](13,info.color),
                       h('span',{style:{fontSize:11.5,color:info?.color,fontWeight:600}},info?.label)
                     ),
-                    h('div',{style:{fontFamily:"'Source Serif 4',Georgia,serif",fontSize:15,color:'#2B2622',lineHeight:1.25,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}},r.name)
+                    h('div',{style:{fontFamily:"'Source Serif 4',Georgia,serif",fontSize:15,color:'#2B2622',lineHeight:1.3}},r.name)
                   ),
-                  !tauschModus && h('button',{onClick:()=>setPicker(idx),style:{background:'#F0EDE5',border:'none',borderRadius:9,padding:'7px 10px',fontSize:12.5,fontWeight:600,color:'#5C5444',cursor:'pointer'}},'Ändern'),
-                  !tauschModus && h('button',{onClick:()=>entferne(idx),style:{background:'none',border:'none',padding:6,cursor:'pointer'}}, ICONS.x(16,'#B0A890'))
+                  !tauschModus && h('div',{style:{display:'flex',flexDirection:'column',gap:6,flexShrink:0}},
+                    h('button',{onClick:()=>setPicker(idx),style:{background:'#F0EDE5',border:'none',borderRadius:9,padding:'7px 10px',fontSize:12.5,fontWeight:600,color:'#5C5444',cursor:'pointer'}},'Ändern'),
+                    h('button',{onClick:()=>entferne(idx),style:{background:'none',border:'none',padding:6,cursor:'pointer',alignSelf:'center'}}, ICONS.x(16,'#B0A890'))
+                  )
                 ) :
                 h('button',{onClick:tauschModus?undefined:()=>setPicker(idx),style:{flex:1,display:'flex',alignItems:'center',gap:6,background:'none',border:'1px dashed #D9CFB8',borderRadius:10,padding:'9px 12px',color:'#8A8270',fontSize:13.5,fontWeight:600,cursor:'pointer'}},
                   ICONS.plus(15), 'Gericht wählen'
                 )
               ),
-              !tauschModus && h('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'4px 12px 4px 80px'}},
+              !tauschModus && h('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'4px 12px 4px 40px'}},
                 sn ? h('div',{style:{display:'contents'}},
                   h('span',{style:{fontSize:11,color:sinfo?.color||'#8A8270',fontWeight:600,flexShrink:0}},'🍎 '+(sinfo?.label||'')),
                   h('span',{style:{flex:1,fontSize:12.5,color:'#5C5444'}},sn.name),
