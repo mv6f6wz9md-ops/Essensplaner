@@ -716,9 +716,9 @@ function App(){
     ),
 
     // Tabs
-    h('div',{className:'no-print',style:{display:'flex',gap:8,padding:'16px 20px 0',maxWidth:720,margin:'0 auto'}},
+    h('div',{className:'no-print',style:{display:'flex',gap:8,padding:'16px 20px 0',maxWidth:720,margin:'0 auto',overflowX:'auto'}},
       ...[{key:'plan',label:'Wochenplan',ic:'chef'},{key:'einkauf',label:'Einkaufsliste'+(nGeplant>0?' ('+ekl.zuKaufen.length+')':''),ic:'cart'},{key:'verlauf',label:'Verlauf',ic:'clock'}].map(t=>
-        h('button',{key:t.key,onClick:()=>setView(t.key),style:{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:7,padding:'11px 14px',borderRadius:12,border:view===t.key?'none':'1px solid #E4DDCB',background:view===t.key?'#2D5A3D':'#fff',color:view===t.key?'#FAF6EF':'#5C5444',fontWeight:600,fontSize:14,cursor:'pointer'}},
+        h('button',{key:t.key,onClick:()=>setView(t.key),style:{flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',gap:7,padding:'11px 14px',borderRadius:12,border:view===t.key?'none':'1px solid #E4DDCB',background:view===t.key?'#2D5A3D':'#fff',color:view===t.key?'#FAF6EF':'#5C5444',fontWeight:600,fontSize:13.5,cursor:'pointer',whiteSpace:'nowrap'}},
           ICONS[t.ic](16), t.label
         )
       )
