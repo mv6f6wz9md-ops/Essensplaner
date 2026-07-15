@@ -301,12 +301,37 @@ function RecipeCard({recipe,onSelect,isSelected,bewertung,onRate,onHide,onEdit})
   );
 }
 
+// Erkennt Zeitangaben in einem Zubereitungsschritt ("20 Min.", "15–20 Min.",
+// "1 Std.") und gibt die Minutenzahl zurück, damit der Kochmodus-Timer
+// automatisch die im Text genannte Dauer vorschlägt statt eines starren Werts.
+function erkenneMinuten(text){
+  if(!text)return null;
+  let m=text.match(/(\d+)\s*[–-]\s*(\d+)\s*(Std\.|Stunden?)/i);
+  if(m)return Math.round((parseInt(m[1])+parseInt(m[2]))/2)*60;
+  m=text.match(/(\d+)\s*(Std\.|Stunden?)/i);
+  if(m)return parseInt(m[1])*60;
+  m=text.match(/(\d+)\s*[–-]\s*(\d+)\s*Min/i);
+  if(m)return Math.round((parseInt(m[1])+parseInt(m[2]))/2);
+  m=text.match(/(\d+)\s*Min/i);
+  if(m)return parseInt(m[1]);
+  return null;
+}
+
 function CookMode({recipe,onClose}){
   const [step,setStep]=useState(0);
   const [sekunden,setSekunden]=useState(0);
   const [laeuft,setLaeuft]=useState(false);
-  const [minutenInput,setMinutenInput]=useState(5);
+  const [minutenInput,setMinutenInput]=useState(()=>erkenneMinuten(recipe.zubereitung[0])||5);
+  const [autoErkannt,setAutoErkannt]=useState(erkenneMinuten(recipe.zubereitung[0])!==null);
   const timerRef=useRef(null);
+
+  // Beim Wechsel des Schritts: falls der neue Schritt eine Zeitangabe enthält,
+  // Timer automatisch darauf voreinstellen; sonst bisherigen Wert beibehalten.
+  useEffect(()=>{
+    const erkannt=erkenneMinuten(recipe.zubereitung[step]);
+    if(erkannt!==null){setMinutenInput(erkannt);setAutoErkannt(true);}
+    else setAutoErkannt(false);
+  },[step]);
 
   useEffect(()=>{
     if(laeuft){
@@ -353,12 +378,13 @@ function CookMode({recipe,onClose}){
       h('div',{style:{fontFamily:"'Source Serif 4',Georgia,serif",fontSize:23,color:'#2B2622',lineHeight:1.4,textAlign:'center'}},recipe.zubereitung[step])
     ),
     h('div',{style:{padding:'0 20px 16px',display:'grid',gap:10}},
+      !laeuft && autoErkannt && h('div',{style:{textAlign:'center',fontSize:11.5,color:'#8A8270'}},'Zeit aus dem Schritt erkannt — bei Bedarf anpassen'),
       h('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:10,background:'#fff',border:'1px solid #E4DDCB',borderRadius:14,padding:'12px 16px'}},
         laeuft ? h('div',{style:{display:'flex',alignItems:'center',gap:14}},
           h('span',{style:{fontFamily:'monospace',fontSize:26,fontWeight:700,color:'#2D5A3D'}},mmss(sekunden)),
           h('button',{onClick:timerStop,style:{background:'#F6E6E2',border:'none',borderRadius:10,padding:'8px 14px',color:'#C24B3F',fontWeight:600,cursor:'pointer'}},'Stopp')
         ) : h('div',{style:{display:'flex',alignItems:'center',gap:10}},
-          h('input',{type:'number',min:1,value:minutenInput,onChange:e=>setMinutenInput(e.target.value),style:{width:60,border:'1px solid #D9CFB8',borderRadius:8,padding:'8px 10px',fontSize:14,textAlign:'center'}}),
+          h('input',{type:'number',min:1,value:minutenInput,onChange:e=>{setMinutenInput(e.target.value);setAutoErkannt(false);},style:{width:60,border:'1px solid #D9CFB8',borderRadius:8,padding:'8px 10px',fontSize:14,textAlign:'center'}}),
           h('span',{style:{fontSize:13,color:'#8A8270'}},'Min.'),
           h('button',{onClick:timerStarten,style:{background:'#2D5A3D',border:'none',borderRadius:10,padding:'8px 16px',color:'#FAF6EF',fontWeight:600,cursor:'pointer'}},'Timer starten')
         )
